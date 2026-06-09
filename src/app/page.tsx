@@ -238,6 +238,10 @@ export default function Home() {
   const [converterPrompt, setConverterPrompt] = useState<string>("");
   const [converterCopied, setConverterCopied] = useState<boolean>(false);
 
+  // Mood Map States
+  const [moodMapPos, setMoodMapPos] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
+  const [isDraggingMood, setIsDraggingMood] = useState<boolean>(false);
+
   // Playlist Generator States
   const [playlistConcept, setPlaylistConcept] = useState<string>("");
   const [playlistFlow, setPlaylistFlow] = useState<string>("Consistent Calm");
@@ -380,11 +384,17 @@ export default function Home() {
     setPromptScore(null);
   };
 
-  // Mood Map clicking handler (Valence & Energy)
-  const handleMoodMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = (1 - (e.clientY - rect.top) / rect.height) * 100;
+  // Mood Map clicking/dragging handler (Valence & Energy)
+  const updateMoodFromCoords = (clientX: number, clientY: number, container: HTMLDivElement) => {
+    const rect = container.getBoundingClientRect();
+    let x = ((clientX - rect.left) / rect.width) * 100;
+    let y = (1 - (clientY - rect.top) / rect.height) * 100;
+    
+    // Constrain to container boundaries
+    x = Math.max(0, Math.min(100, x));
+    y = Math.max(0, Math.min(100, y));
+    
+    setMoodMapPos({ x, y });
 
     let recommendedGenre = "";
     let recommendedMood = "";
@@ -438,6 +448,21 @@ export default function Home() {
     setUseCases(["무드맵 추천 상황"]);
     setFinalPrompt("");
     setPromptScore(null);
+  };
+
+  const handleMoodMapMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    setIsDraggingMood(true);
+    updateMoodFromCoords(e.clientX, e.clientY, e.currentTarget);
+  };
+
+  const handleMoodMapMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isDraggingMood) {
+      updateMoodFromCoords(e.clientX, e.clientY, e.currentTarget);
+    }
+  };
+
+  const handleMoodMapMouseUpOrLeave = () => {
+    setIsDraggingMood(false);
   };
 
   const toggleInstrument = (inst: string) => {
@@ -898,8 +923,11 @@ export default function Home() {
                 <p className="text-xs text-[var(--color-sub)]/70 mb-3">맵의 4사분면 격자를 마우스로 클릭하면 무드가 즉각 세팅됩니다.</p>
 
                 <div
-                  onClick={handleMoodMapClick}
-                  className="relative w-full h-48 border border-[var(--color-border)] rounded-lg bg-[var(--color-bg-secondary)]/50 hover:bg-[var(--color-bg-secondary)] cursor-crosshair overflow-hidden transition-colors"
+                  onMouseDown={handleMoodMapMouseDown}
+                  onMouseMove={handleMoodMapMouseMove}
+                  onMouseUp={handleMoodMapMouseUpOrLeave}
+                  onMouseLeave={handleMoodMapMouseUpOrLeave}
+                  className="relative w-full h-48 border border-[var(--color-border)] rounded-lg bg-[var(--color-bg-secondary)]/50 hover:bg-[var(--color-bg-secondary)] cursor-crosshair overflow-hidden select-none transition-colors"
                 >
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="w-full h-[1px] bg-slate-200"></div>
@@ -916,8 +944,14 @@ export default function Home() {
                   <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-indigo-500/5 pointer-events-none"></div>
                   <div className="absolute bottom-0 right-0 w-1/2 h-1/2 bg-emerald-500/5 pointer-events-none"></div>
 
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-[var(--color-point)]/20 border border-[var(--color-point)] rounded-full pointer-events-none animate-ping"></div>
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-[var(--color-point)] rounded-full pointer-events-none"></div>
+                  <div
+                    style={{ left: `${moodMapPos.x}%`, top: `${100 - moodMapPos.y}%` }}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-[var(--color-point)]/20 border border-[var(--color-point)] rounded-full pointer-events-none animate-ping"
+                  ></div>
+                  <div
+                    style={{ left: `${moodMapPos.x}%`, top: `${100 - moodMapPos.y}%` }}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-[var(--color-point)] rounded-full pointer-events-none"
+                  ></div>
                 </div>
               </div>
             </div>
