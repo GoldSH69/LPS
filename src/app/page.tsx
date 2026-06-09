@@ -1552,6 +1552,96 @@ export default function Home() {
             )}
           </div>
         )}
+
+        {/* ========================================================================= */}
+        {/* USER MANUAL SECTION */}
+        {/* ========================================================================= */}
+        <section className="glass-panel p-6 md:p-8 mt-12 mb-6 border-[var(--color-border)] bg-[var(--color-card)] flex flex-col gap-6 text-sm text-[var(--color-text)] leading-relaxed">
+          <div className="flex flex-col gap-1.5 border-b border-[var(--color-border)] pb-3">
+            <h2 className="text-lg font-bold text-[var(--color-point)] flex items-center gap-2">
+              <Info size={20} />
+              Lyria Prompt Studio (LPS) 사용 설명서
+            </h2>
+            <p className="text-xs text-[var(--color-sub)]">
+              LPS를 100% 활용하여 구글 Lyria 음악 생성 모델을 극대화하는 마스터 가이드입니다.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Left Box: Step-by-Step setup & Builder */}
+            <div className="flex flex-col gap-4">
+              <h3 className="text-sm font-bold text-[var(--color-point)] border-b border-[var(--color-border)]/50 pb-1 flex items-center gap-1.5">
+                <Settings size={15} />
+                1. 초기 연결 및 기본 설정
+              </h3>
+              <ul className="list-decimal list-inside flex flex-col gap-2.5 text-xs text-[var(--color-sub)]">
+                <li>
+                  <strong className="text-[var(--color-text)]">무료 API Key 발급:</strong> 구글 AI 스튜디오(<a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" className="text-[var(--color-point)] font-semibold hover:underline">Google AI Studio</a>)에 구글 계정으로 로그인한 뒤, <strong className="text-[var(--color-point)]">Get API Key</strong> 버튼을 눌러 개인 무료 API Key를 복사합니다.
+                </li>
+                <li>
+                  <strong className="text-[var(--color-text)]">LPS에 Key 저장:</strong> 우측 상단의 <strong className="text-[var(--color-point)]">Gemini API Key 등록 필요</strong> 버튼을 클릭하여 복사한 API Key를 입력한 뒤 저장합니다. 키는 브라우저 내부(<code className="bg-[var(--color-bg-secondary)] px-1 rounded font-mono">localStorage</code>)에만 안전하게 로컬 보관되며, 외부 서버로 전혀 전송되지 않습니다.
+                </li>
+                <li>
+                  <strong className="text-[var(--color-text)]">모델 권장사항:</strong> 속도와 효율성 면에서 기본 설정된 <strong className="text-[var(--color-point)]">Gemini 2.5 Flash</strong> 모델 사용을 강력히 권장합니다.
+                </li>
+              </ul>
+
+              <h3 className="text-sm font-bold text-[var(--color-point)] border-b border-[var(--color-border)]/50 pb-1 mt-2 flex items-center gap-1.5">
+                <Sparkles size={15} />
+                2. PROMPT BUILDER 활용법
+              </h3>
+              <ul className="list-disc list-inside flex flex-col gap-2.5 text-xs text-[var(--color-sub)]">
+                <li>
+                  <strong className="text-[var(--color-text)]">자연어 입력 (AI 아이디어 분석기):</strong> 감정, 가사 한 소절, 계절, 특정 기억 등을 한국어로 자유롭게 입력하고 <strong className="text-[var(--color-point)]">AI로 음악 구성 분석</strong> 버튼을 누르면 AI가 세부 파라미터를 자동 구성하여 세팅합니다.
+                </li>
+                <li>
+                  <strong className="text-[var(--color-text)]">스마트 프리셋:</strong> 공부방 로파이, 비 오는 밤 재즈, 신나는 드라이브 등 검증된 템플릿을 한 번의 클릭으로 로드할 수 있습니다.
+                </li>
+                <li>
+                  <strong className="text-[var(--color-text)]">무드 맵:</strong> 2차원 에너지-밝기 영역을 직접 클릭하면 곡의 장르, 악기 밸런스, 템포가 좌표 분석을 거쳐 맞춤으로 자동 로드됩니다.
+                </li>
+                <li>
+                  <strong className="text-[var(--color-text)]">3단계 초보자 가이드:</strong> 각 파라미터(장르, 무드, BPM 등) 우측의 물음표(<code className="text-[var(--color-point)] font-bold font-mono">?</code>) 버튼을 클릭하여 이론적 설명부터 비유, 실제 소리 느낌까지 즉시 확인하세요.
+                </li>
+              </ul>
+            </div>
+
+            {/* Right Box: Prompt Doctor, Style, and Tips */}
+            <div className="flex flex-col gap-4">
+              <h3 className="text-sm font-bold text-[var(--color-point)] border-b border-[var(--color-border)]/50 pb-1 flex items-center gap-1.5">
+                <Activity size={15} />
+                3. PROMPT DOCTOR & STYLE CONVERTER
+              </h3>
+              <ul className="list-disc list-inside flex flex-col gap-2.5 text-xs text-[var(--color-sub)]">
+                <li>
+                  <strong className="text-[var(--color-text)]">PROMPT DOCTOR:</strong> 기존에 작곡해보려던 거칠고 막연한 영어 음악 프롬프트를 입력하면, 구글 리리아 규격에서 누락된 핵심 톤 및 사운드 구성 요소를 진단하여 완성도 높은 문장으로 리라이팅 처방해 줍니다.
+                </li>
+                <li>
+                  <strong className="text-[var(--color-text)]">STYLE CONVERTER:</strong> 특정 유명 가수의 감성(예: NewJeans 느낌, Coldplay 느낌 등)을 입력하면, AI가 리리아가 정확하게 인식할 수 있는 전용 신시사이저, 시그니처 비트 질감, 보컬 톤 묘사로 분해하여 완벽한 영문 프롬프트로 가공합니다.
+                </li>
+                <li>
+                  <strong className="text-[var(--color-text)]">MY HISTORY:</strong> 최근 생성된 모든 최종 영문 프롬프트 및 설정값은 로컬에 자동 보관(최대 20개)되며, 다시 클릭하여 즉시 편집 상태로 로드하거나 별표를 눌러 즐겨찾기 보관할 수 있습니다.
+                </li>
+              </ul>
+
+              <h3 className="text-sm font-bold text-[var(--color-point)] border-b border-[var(--color-border)]/50 pb-1 mt-2 flex items-center gap-1.5">
+                <Sliders size={15} />
+                4. Google Lyria 공식 프롬프트 팁
+              </h3>
+              <div className="bg-[var(--color-bg-secondary)] p-3 rounded-lg text-xs text-[var(--color-sub)] flex flex-col gap-2 border border-[var(--color-border)]/50">
+                <p>
+                  💡 <strong className="text-[var(--color-text)]">자연어 서사 구조 묘사:</strong> 단순한 단어의 나열보다 하나의 완전한 서사형 영어 문장(Full Descriptive Sentences)이 소리적 상상력을 자극하여 리리아가 훨씬 더 세밀하고 음악적으로 연주해 냅니다.
+                </p>
+                <p>
+                  💡 <strong className="text-[var(--color-text)]">감성적 설명 우선:</strong> 리리아는 이론적인 화성 기호나 오디오 이펙터 수치보다는 공간(예: cathedral, cozy bedroom), 연주자의 정서적 뉘앙스(예: breathy, warm, nostalgic)에 민감하게 작곡 반응합니다.
+                </p>
+                <p>
+                  💡 <strong className="text-[var(--color-text)]">Lyria 3 Pro 가사 마커:</strong> 가사를 제공할 때는 반드시 <code className="bg-[var(--color-card)] border border-[var(--color-border)] px-1 py-0.5 rounded font-mono">[Intro]</code>, <code className="bg-[var(--color-card)] border border-[var(--color-border)] px-1 py-0.5 rounded font-mono">[Verse]</code>, <code className="bg-[var(--color-card)] border border-[var(--color-border)] px-1 py-0.5 rounded font-mono">[Chorus]</code>, <code className="bg-[var(--color-card)] border border-[var(--color-border)] px-1 py-0.5 rounded font-mono">[Outro]</code> 등의 마커를 행 처음에 붙여 가창 구간의 전개를 물리적으로 통제해 주는 것이 좋습니다.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
 
       {/* ========================================================================= */}
