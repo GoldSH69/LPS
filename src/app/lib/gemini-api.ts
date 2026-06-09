@@ -295,7 +295,9 @@ export interface PlaylistTrack {
   description: string;
   musicPrompt: string;
   imagePrompt: string;
+  imagePromptKo?: string;
   videoPrompt: string;
+  videoPromptKo?: string;
   thumbnailCaption: {
     ko: string;
     en: string;
@@ -339,8 +341,8 @@ export async function generatePlaylist(
 
 [지침]
 1. 장르는 Google Lyria 음악 모델의 강점을 극대화하는 묘사를 포함하여 영문으로 작성해야 합니다.
-2. 각 곡에 앨범 아트용 'Google Imagen 2' 이미지 프롬프트(영문)를 생성하세요. 썸네일 아트에 어울리는 visual art, digital illustration, realistic photography 등의 스타일 묘사를 명시하세요.
-3. 각 곡에 배경 비디오/루프용 'Google Veo 3' 동영상 프롬프트(영문)를 생성하세요. 씬의 부드러운 움직임(cinematic loop video, slow panning, warm light leak)을 묘사하세요.
+2. 각 곡에 앨범 아트용 'Google Imagen 2' 이미지 프롬프트(영문)를 생성하고, 이에 대응하는 직관적인 한글 이미지 묘사/설명(imagePromptKo)도 생성하세요. 썸네일 아트에 어울리는 visual art, digital illustration, realistic photography 등의 스타일 묘사를 명시하세요.
+3. 각 곡에 배경 비디오/루프용 'Google Veo 3' 동영상 프롬프트(영문)를 생성하고, 이에 대응하는 직관적인 한글 동영상 묘사/설명(videoPromptKo)도 생성하세요. 씬의 부드러운 움직임(cinematic loop video, slow panning, warm light leak)을 묘사하세요.
 4. 각 곡의 썸네일에 들어갈 타이틀 자막(thumbnailCaption) 및 씬(Scene)별 영상 자막(scenes - 총 3개 씬)을 한국어, 영어, 일본어 3개 국어로 생성해 주세요.
 5. 왜 이 10곡을 선택했고 어떻게 유기적으로 감정선/에너지를 이어지게 구성했는지 그 전략적 기획서(flowStrategy)를 상세하게 한국어로 작성해 주세요.
 6. 유튜브 업로드 시 활용할 트렌디하고 조회수를 극대화할 수 있는 유튜브 메타데이터(youtubeMetadata: 제목, 상세 더보기 설명란 텍스트, 해시태그 목록, 추천 태그 검색어 목록)를 한국어 중심으로 일괄 생성하세요. 설명란(description)에는 수록곡 목록의 기획/해설이 정갈하게 포함되어야 합니다.
@@ -363,7 +365,9 @@ export async function generatePlaylist(
       "description": "한글 곡 설명 (Korean Description, 이 곡이 주는 정서와 연출 의도)",
       "musicPrompt": "구글 Lyria 표준 6단계 프레임워크를 엄격히 준수한 완성형 영문 음악 프롬프트",
       "imagePrompt": "Google Imagen 2 썸네일 생성용 영문 프롬프트",
+      "imagePromptKo": "Google Imagen 2 썸네일 생성용 한글 묘사 및 설명",
       "videoPrompt": "Google Veo 3 배경 비디오 루프 생성용 영문 프롬프트",
+      "videoPromptKo": "Google Veo 3 배경 비디오 루프 생성용 한글 묘사 및 설명",
       "thumbnailCaption": {
         "ko": "한글 썸네일 자막",
         "en": "영어 썸네일 자막",
@@ -445,7 +449,7 @@ ${nextContext}
 
 [지침]
 1. 장르는 Google Lyria 음악 모델의 강점을 극대화하는 묘사를 포함하여 영문으로 작성해야 합니다.
-2. Imagen 2 이미지 및 Veo 3 비디오 프롬프트는 썸네일과 유튜브 루프 비디오 제작에 어울리도록 영문으로 작성합니다.
+2. Imagen 2 이미지 및 Veo 3 비디오 프롬프트는 썸네일과 유튜브 루프 비디오 제작에 어울리도록 영문으로 작성하고, 각각 한글 묘사/설명(imagePromptKo, videoPromptKo)도 포함해야 합니다.
 3. 자막 정보(thumbnailCaption, scenes - 총 3개)는 한국어, 영어, 일본어 3개 국어를 모두 제공해야 합니다.
 4. 이전 트랙과 다음 트랙 사이에서 흐름이 끊기지 않는 자연스러운 교두보 역할을 수행하도록 음악의 속도와 분위기 연결을 고려하세요.
 
@@ -454,9 +458,11 @@ ${nextContext}
   "trackNumber": ${params.trackNumber},
   "title": "새로 조정된 영문 곡 제목 (English Title)",
   "description": "새로 조정된 한글 곡 설명 (Korean Description)",
-  "musicPrompt": "구글 Lyria 표준 6단계 프레임워크를 준수한 완성형 영문 음악 프롬프트",
+  "musicPrompt": "구글 Lyria 표준 6단계 프레임워크를 엄격히 준수한 완성형 영문 음악 프롬프트",
   "imagePrompt": "Google Imagen 2 썸네일 생성용 영문 프롬프트",
+  "imagePromptKo": "Google Imagen 2 썸네일 생성용 한글 묘사 및 설명",
   "videoPrompt": "Google Veo 3 배경 비디오 루프 생성용 영문 프롬프트",
+  "videoPromptKo": "Google Veo 3 배경 비디오 루프 생성용 한글 묘사 및 설명",
   "thumbnailCaption": {
     "ko": "조정된 한글 썸네일 자막",
     "en": "조정된 영어 썸네일 자막",

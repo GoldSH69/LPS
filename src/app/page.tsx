@@ -22,7 +22,8 @@ import {
   Award,
   Download,
   ListMusic,
-  FileText
+  FileText,
+  CloudLightning
 } from "lucide-react";
 import {
   generateMusicIdea,
@@ -198,11 +199,13 @@ const PRESETS: Record<string, Preset> = {
 interface HistoryItem {
   id: string;
   timestamp: string;
-  idea: string;
-  prompt: string;
-  score: number;
+  createdAt?: number;
   favorite: boolean;
-  params: {
+  type?: "builder" | "doctor" | "converter" | "playlist";
+  idea?: string;
+  prompt?: string;
+  score?: number;
+  params?: {
     genre: string;
     mood: string;
     bpm: number;
@@ -212,6 +215,15 @@ interface HistoryItem {
     production: string;
     lyrics: string;
   };
+  doctorInput?: string;
+  doctorOutput?: string;
+  doctorDiagnosis?: string;
+  doctorMissing?: string[];
+  converterInput?: string;
+  converterTargetStyle?: string;
+  converterOutput?: string;
+  playlistInput?: string;
+  playlistOutput?: any;
 }
 
 export default function Home() {
@@ -263,9 +275,7 @@ export default function Home() {
   const [converterPrompt, setConverterPrompt] = useState<string>("");
   const [converterCopied, setConverterCopied] = useState<boolean>(false);
 
-  // Mood Map States
-  const [moodMapPos, setMoodMapPos] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
-  const [isDraggingMood, setIsDraggingMood] = useState<boolean>(false);
+
 
   // Playlist Generator States
   const [playlistConcept, setPlaylistConcept] = useState<string>("");
@@ -276,9 +286,99 @@ export default function Home() {
   const [trackFeedbacks, setTrackFeedbacks] = useState<Record<number, string>>({});
   const [trackLoadingStates, setTrackLoadingStates] = useState<Record<number, boolean>>({});
 
+  // Gist Sync Settings States
+  const [githubToken, setGithubToken] = useState<string>("");
+  const [gistId, setGistId] = useState<string>("");
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [activeHistoryItemId, setActiveHistoryItemId] = useState<string | null>(null);
+
   // Local History State
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Sync utilities
+  const pullHistoryFromGist = async (token: string, id: string): Promise<HistoryItem[]> => {
+    const response = await fetch(`https://api.github.com/gists/${id}`, {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`Gist 로드 실패: ${response.statusText}`);
+    }
+    const data = await response.json();
+    const fileContent = data.files["lps_history.json"]?.content;
+    if (!fileContent) {
+      return [];
+    }
+    return JSON.parse(fileContent);
+  };
+
+  const pushHistoryToGist = async (token: string, id: string, historyList: HistoryItem[]) => {
+    try {
+      await fetch(`https://api.github.com/gists/${id}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.v3+json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          description: "Lyria Prompt Studio History Backup",
+          files: {
+            "lps_history.json": {
+              content: JSON.stringify(historyList, null, 2),
+            },
+          },
+        }),
+      });
+    } catch (err) {
+      console.error("Gist 백업 중 오류:", err);
+    }
+  };
+
+  const createNewGist = async (token: string, historyList: HistoryItem[]): Promise<string> => {
+    const response = await fetch("https://api.github.com/gists", {
+      method: "POST",
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        description: "Lyria Prompt Studio History Backup",
+        public: false,
+        files: {
+          "lps_history.json": {
+            content: JSON.stringify(historyList, null, 2),
+          },
+        },
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Gist 생성 실패: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.id;
+  };
+
+  const mergeHistory = (local: HistoryItem[], remote: HistoryItem[]): HistoryItem[] => {
+    const map = new Map<string, HistoryItem>();
+    remote.forEach((item) => {
+      if (item && item.id) map.set(item.id, item);
+    });
+    local.forEach((item) => {
+      if (item && item.id && !map.has(item.id)) {
+        map.set(item.id, item);
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      const timeA = a.createdAt || (a.timestamp ? new Date(a.timestamp).getTime() : 0) || 0;
+      const timeB = b.createdAt || (b.timestamp ? new Date(b.timestamp).getTime() : 0) || 0;
+      return timeB - timeA;
+    });
+  };
 
   // Initialize and Load Local Storage
   useEffect(() => {
@@ -286,13 +386,37 @@ export default function Home() {
       const savedKey = localStorage.getItem("lps_gemini_api_key") || "";
       const savedModel = localStorage.getItem("lps_gemini_model") || "auto";
       const savedHistory = localStorage.getItem("lps_history") || "[]";
+      const savedGitToken = localStorage.getItem("lps_github_token") || "";
+      const savedGistId = localStorage.getItem("lps_gist_id") || "";
+
       setApiKey(savedKey);
       setSelectedModel(savedModel);
-      setHistory(JSON.parse(savedHistory));
+      setGithubToken(savedGitToken);
+      setGistId(savedGistId);
+
+      const localHist = JSON.parse(savedHistory);
+      setHistory(localHist);
 
       if (!savedKey) {
         setShowApiKeyWarning(true);
         setSettingsOpen(true);
+      }
+
+      if (savedGitToken && savedGistId) {
+        setIsSyncing(true);
+        pullHistoryFromGist(savedGitToken, savedGistId)
+          .then((remoteHistory) => {
+            const merged = mergeHistory(localHist, remoteHistory);
+            setHistory(merged);
+            localStorage.setItem("lps_history", JSON.stringify(merged));
+            pushHistoryToGist(savedGitToken, savedGistId, merged);
+          })
+          .catch((err) => {
+            console.error("Gist 동기화 중 오류 발생:", err);
+          })
+          .finally(() => {
+            setIsSyncing(false);
+          });
       }
     }
   }, []);
@@ -308,39 +432,79 @@ export default function Home() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Auto-save playlist edits to Gist
+  useEffect(() => {
+    if (playlistResult && activeHistoryItemId) {
+      const activeItem = history.find(h => h.id === activeHistoryItemId);
+      if (activeItem && activeItem.type === "playlist" && JSON.stringify(activeItem.playlistOutput) !== JSON.stringify(playlistResult)) {
+        const updated = history.map(item => {
+          if (item.id === activeHistoryItemId) {
+            return { ...item, playlistOutput: playlistResult };
+          }
+          return item;
+        });
+        setHistory(updated);
+        localStorage.setItem("lps_history", JSON.stringify(updated));
+        if (githubToken && gistId) {
+          pushHistoryToGist(githubToken, gistId, updated);
+        }
+      }
+    }
+  }, [playlistResult, activeHistoryItemId]);
+
   // Save Settings Helper
-  const saveSettings = (key: string, model: string) => {
+  const saveSettings = (key: string, model: string, gitToken?: string, gId?: string) => {
     setApiKey(key);
     setSelectedModel(model);
     localStorage.setItem("lps_gemini_api_key", key);
     localStorage.setItem("lps_gemini_model", model);
+
+    const token = gitToken || "";
+    const id = gId || "";
+    setGithubToken(token);
+    setGistId(id);
+    localStorage.setItem("lps_github_token", token);
+    localStorage.setItem("lps_gist_id", id);
+
     setSettingsOpen(false);
     setShowApiKeyWarning(false);
+
+    if (token && id) {
+      setIsSyncing(true);
+      pullHistoryFromGist(token, id)
+        .then((remoteHistory) => {
+          const merged = mergeHistory(history, remoteHistory);
+          setHistory(merged);
+          localStorage.setItem("lps_history", JSON.stringify(merged));
+          pushHistoryToGist(token, id, merged);
+        })
+        .catch((err) => {
+          alert("Gist 동기화 중 오류 발생: " + err.message);
+        })
+        .finally(() => {
+          setIsSyncing(false);
+        });
+    }
   };
 
   // Add Item to History
-  const addToHistory = (promptText: string, scoreVal: number, ideaVal: string) => {
+  const addToHistory = (itemData: Partial<HistoryItem>) => {
     const newItem: HistoryItem = {
       id: Math.random().toString(36).substr(2, 9),
       timestamp: new Date().toLocaleString("ko-KR"),
-      idea: ideaVal || "자율 빌더 조립",
-      prompt: promptText,
-      score: scoreVal,
+      createdAt: Date.now(),
       favorite: false,
-      params: {
-        genre,
-        mood,
-        bpm,
-        instruments: selectedInstruments,
-        vocal,
-        structure,
-        production,
-        lyrics: customLyrics
-      }
-    };
-    const updatedHistory = [newItem, ...history.slice(0, 19)];
+      ...itemData
+    } as HistoryItem;
+
+    const updatedHistory = [newItem, ...history.filter(h => h.id !== newItem.id).slice(0, 19)];
     setHistory(updatedHistory);
     localStorage.setItem("lps_history", JSON.stringify(updatedHistory));
+    setActiveHistoryItemId(newItem.id);
+
+    if (githubToken && gistId) {
+      pushHistoryToGist(githubToken, gistId, updatedHistory);
+    }
   };
 
   // Delete from History
@@ -349,6 +513,12 @@ export default function Home() {
     const updated = history.filter((item) => item.id !== id);
     setHistory(updated);
     localStorage.setItem("lps_history", JSON.stringify(updated));
+    if (activeHistoryItemId === id) {
+      setActiveHistoryItemId(null);
+    }
+    if (githubToken && gistId) {
+      pushHistoryToGist(githubToken, gistId, updated);
+    }
   };
 
   // Toggle Favorite in History
@@ -362,29 +532,55 @@ export default function Home() {
     });
     setHistory(updated);
     localStorage.setItem("lps_history", JSON.stringify(updated));
+    if (githubToken && gistId) {
+      pushHistoryToGist(githubToken, gistId, updated);
+    }
   };
 
   // Load from History
   const loadHistoryItem = (item: HistoryItem) => {
-    setGenre(item.params.genre);
-    setMood(item.params.mood);
-    setBpm(item.params.bpm);
-    setSelectedInstruments(item.params.instruments);
-    setVocal(item.params.vocal);
-    setStructure(item.params.structure);
-    setProduction(item.params.production);
-    setCustomLyrics(item.params.lyrics);
-    setFinalPrompt(item.prompt);
-    setIdeaInput(item.idea);
-    setActiveTab("builder");
-    if (apiKey) {
-      setIsLoading(true);
-      analyzePromptQuality(apiKey, item.prompt, selectedModel)
-        .then((score) => {
-          setPromptScore(score);
-          setIsLoading(false);
-        })
-        .catch(() => setIsLoading(false));
+    setActiveHistoryItemId(item.id);
+    const itemType = item.type || "builder";
+
+    if (itemType === "builder") {
+      setGenre(item.params?.genre || "");
+      setMood(item.params?.mood || "");
+      setBpm(item.params?.bpm || 100);
+      setSelectedInstruments(item.params?.instruments || []);
+      setVocal(item.params?.vocal || "");
+      setStructure(item.params?.structure || "");
+      setProduction(item.params?.production || "");
+      setCustomLyrics(item.params?.lyrics || "");
+      setFinalPrompt(item.prompt || "");
+      setIdeaInput(item.idea || "");
+      setPromptScore(item.score ? {
+        total: item.score,
+        genre: item.score,
+        mood: item.score,
+        tempo: item.score,
+        instruments: item.score,
+        vocals: item.score,
+        structure: item.score,
+        atmosphere: item.score,
+        production: item.score,
+        strengths: ["히스토리에서 복원됨"],
+        improvements: []
+      } : null);
+      setActiveTab("builder");
+    } else if (itemType === "doctor") {
+      setDoctorRawPrompt(item.doctorInput || "");
+      setDoctorImproved(item.doctorOutput || "");
+      setDoctorCritique(item.doctorDiagnosis || "");
+      setDoctorMissing(item.doctorMissing || []);
+      setActiveTab("doctor");
+    } else if (itemType === "converter") {
+      setConverterKeyword(item.converterInput || "");
+      setConverterPrompt(item.converterOutput || "");
+      setActiveTab("converter");
+    } else if (itemType === "playlist") {
+      setPlaylistConcept(item.playlistInput || "");
+      setPlaylistResult(item.playlistOutput || null);
+      setActiveTab("playlist");
     }
   };
 
@@ -409,86 +605,7 @@ export default function Home() {
     setPromptScore(null);
   };
 
-  // Mood Map clicking/dragging handler (Valence & Energy)
-  const updateMoodFromCoords = (clientX: number, clientY: number, container: HTMLDivElement) => {
-    const rect = container.getBoundingClientRect();
-    let x = ((clientX - rect.left) / rect.width) * 100;
-    let y = (1 - (clientY - rect.top) / rect.height) * 100;
-    
-    // Constrain to container boundaries
-    x = Math.max(0, Math.min(100, x));
-    y = Math.max(0, Math.min(100, y));
-    
-    setMoodMapPos({ x, y });
 
-    let recommendedGenre = "";
-    let recommendedMood = "";
-    let recommendedBpm = 100;
-    let recommendedInstruments: string[] = [];
-    let recommendedVocal = "";
-    let recommendedProduction = "";
-
-    if (x >= 50 && y >= 50) {
-      recommendedGenre = "uplifting dance pop";
-      recommendedMood = "energetic, bright and joyful";
-      recommendedBpm = 124;
-      recommendedInstruments = ["punchy electronic drums", "bright acoustic guitar", "uplifting piano chords", "warm synth chords"];
-      recommendedVocal = "clear and powerful female vocals in English";
-      recommendedProduction = "clean digital master, wide stereofield, crisp high-end";
-    } else if (x < 50 && y >= 50) {
-      recommendedGenre = "intense alternative rock / modern metal";
-      recommendedMood = "dark, aggressive, powerful and suspenseful";
-      recommendedBpm = 138;
-      recommendedInstruments = ["heavy distorted electric guitars", "pounding acoustic drum kit", "overdriven bass guitar"];
-      recommendedVocal = "raspy, emotive male rock vocals in Korean";
-      recommendedProduction = "raw garage-style mix, heavy compression, aggressive dynamics";
-    } else if (x < 50 && y < 50) {
-      recommendedGenre = "slow cinematic ambient / sad piano ballad";
-      recommendedMood = "melancholic, somber, quiet and reflective";
-      recommendedBpm = 68;
-      recommendedInstruments = ["soft felt piano keys", "slow emotional cello notes", "ambient pad synthesizers"];
-      recommendedVocal = "whispery, delicate female vocal in Korean";
-      recommendedProduction = "deep spacious reverb, analog tape hiss, intimate stereo width";
-    } else {
-      recommendedGenre = "cozy bossa nova / warm acoustic folk";
-      recommendedMood = "chill, peaceful, relaxed and cozy";
-      recommendedBpm = 85;
-      recommendedInstruments = ["warm nylon acoustic guitar", "soft acoustic shaker", "subtle double bass plucks"];
-      recommendedVocal = "warm, mellow male vocals in English";
-      recommendedProduction = "clean organic acoustic mix, warm room ambience";
-    }
-
-    setGenre(recommendedGenre);
-    setMood(recommendedMood);
-    setBpm(recommendedBpm);
-    setSelectedInstruments(recommendedInstruments);
-    setVocal(recommendedVocal);
-    setStructure("Intro - Verse - Chorus - Outro");
-    setProduction(recommendedProduction);
-    setAiReasons({
-      genre: `무드 맵 좌표(에너지: ${Math.round(y)}%, 밝기: ${Math.round(x)}%)를 분석하여 최적의 사운드를 설계했습니다.`,
-      bpm: `지정된 에너지 레벨에 맞춰 동작하기 적합한 ${recommendedBpm} BPM으로 설정했습니다.`,
-      instruments: "조합된 정서에 가장 잘 부응하는 시그니처 사운드 편성입니다."
-    });
-    setUseCases(["무드맵 추천 상황"]);
-    setFinalPrompt("");
-    setPromptScore(null);
-  };
-
-  const handleMoodMapMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    setIsDraggingMood(true);
-    updateMoodFromCoords(e.clientX, e.clientY, e.currentTarget);
-  };
-
-  const handleMoodMapMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (isDraggingMood) {
-      updateMoodFromCoords(e.clientX, e.clientY, e.currentTarget);
-    }
-  };
-
-  const handleMoodMapMouseUpOrLeave = () => {
-    setIsDraggingMood(false);
-  };
 
   const toggleInstrument = (inst: string) => {
     if (selectedInstruments.includes(inst)) {
@@ -556,7 +673,22 @@ export default function Home() {
       const score = await analyzePromptQuality(apiKey, optimized, selectedModel);
       setPromptScore(score);
 
-      addToHistory(optimized, score.total, ideaInput);
+      addToHistory({
+        type: "builder",
+        idea: ideaInput || "자율 빌더 조립",
+        prompt: optimized,
+        score: score.total,
+        params: {
+          genre,
+          mood,
+          bpm,
+          instruments: selectedInstruments,
+          vocal,
+          structure,
+          production,
+          lyrics: customLyrics
+        }
+      });
     } catch (error: any) {
       alert(error.message || "오류가 발생했습니다.");
     } finally {
@@ -579,6 +711,14 @@ export default function Home() {
       setDoctorCritique(result.critique);
       setDoctorMissing(result.missing);
       setDoctorImproved(result.improvedPrompt);
+      addToHistory({
+        type: "doctor",
+        idea: doctorRawPrompt.slice(0, 40) + (doctorRawPrompt.length > 40 ? "..." : ""),
+        doctorInput: doctorRawPrompt,
+        doctorOutput: result.improvedPrompt,
+        doctorDiagnosis: result.critique,
+        doctorMissing: result.missing
+      });
     } catch (error: any) {
       alert(error.message || "닥터 처방 중 오류가 발생했습니다.");
     } finally {
@@ -614,6 +754,13 @@ export default function Home() {
         selectedModel
       );
       setConverterPrompt(draftPrompt);
+      addToHistory({
+        type: "converter",
+        idea: `스타일 변환: ${converterKeyword.slice(0, 30)}${converterKeyword.length > 30 ? "..." : ""}`,
+        converterInput: converterKeyword,
+        converterTargetStyle: result.genre,
+        converterOutput: draftPrompt
+      });
     } catch (error: any) {
       alert(error.message || "스타일 변환 중 오류가 발생했습니다.");
     } finally {
@@ -635,6 +782,12 @@ export default function Home() {
     try {
       const result = await generatePlaylist(apiKey, playlistConcept, playlistFlow, selectedModel);
       setPlaylistResult(result);
+      addToHistory({
+        type: "playlist",
+        idea: `플레이리스트: ${playlistConcept.slice(0, 30)}${playlistConcept.length > 30 ? "..." : ""}`,
+        playlistInput: playlistConcept,
+        playlistOutput: result
+      });
     } catch (error: any) {
       alert(error.message || "플레이리스트 생성 중 오류가 발생했습니다.");
     } finally {
@@ -938,48 +1091,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Box 3: Mood Map */}
-              <div className="glass-panel p-5 flex flex-col">
-                <div className="flex items-center justify-between mb-1">
-                  <h2 className="text-sm font-bold text-[var(--color-text)] flex items-center gap-1.5">
-                    <Activity size={16} className="text-[var(--color-point)]" />
-                    무드 맵 (Mood Map)
-                  </h2>
-                </div>
-                <p className="text-xs text-[var(--color-sub)]/70 mb-3">맵의 4사분면 격자를 마우스로 클릭하면 무드가 즉각 세팅됩니다.</p>
 
-                <div
-                  onMouseDown={handleMoodMapMouseDown}
-                  onMouseMove={handleMoodMapMouseMove}
-                  onMouseUp={handleMoodMapMouseUpOrLeave}
-                  onMouseLeave={handleMoodMapMouseUpOrLeave}
-                  className="relative w-full h-48 border border-[var(--color-border)] rounded-lg bg-[var(--color-bg-secondary)]/50 hover:bg-[var(--color-bg-secondary)] cursor-crosshair overflow-hidden select-none transition-colors"
-                >
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-full h-[1px] bg-slate-200"></div>
-                    <div className="h-full w-[1px] bg-slate-200"></div>
-                  </div>
-
-                  <span className="absolute top-2 left-2 text-xs font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">격렬함 (High Energy)</span>
-                  <span className="absolute top-2 right-2 text-xs font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">활기참 (Happy/Bright)</span>
-                  <span className="absolute bottom-2 left-2 text-xs font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">우울함 (Sad/Melancholy)</span>
-                  <span className="absolute bottom-2 right-2 text-xs font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">차분함 (Calm/Peaceful)</span>
-
-                  <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-rose-500/5 pointer-events-none"></div>
-                  <div className="absolute top-0 left-0 w-1/2 h-1/2 bg-amber-500/5 pointer-events-none"></div>
-                  <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-indigo-500/5 pointer-events-none"></div>
-                  <div className="absolute bottom-0 right-0 w-1/2 h-1/2 bg-emerald-500/5 pointer-events-none"></div>
-
-                  <div
-                    style={{ left: `${moodMapPos.x}%`, top: `${100 - moodMapPos.y}%` }}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-[var(--color-point)]/20 border border-[var(--color-point)] rounded-full pointer-events-none animate-ping"
-                  ></div>
-                  <div
-                    style={{ left: `${moodMapPos.x}%`, top: `${100 - moodMapPos.y}%` }}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-[var(--color-point)] rounded-full pointer-events-none"
-                  ></div>
-                </div>
-              </div>
             </div>
 
             {/* COLUMN 2: Option Customization (Span 4) */}
@@ -1968,6 +2080,17 @@ export default function Home() {
                                     }}
                                     className="p-2 text-xs bg-[var(--color-bg-secondary)]/50 border border-[var(--color-border)] rounded focus-ring h-16 resize-none leading-relaxed"
                                   />
+                                  <input
+                                    type="text"
+                                    value={track.imagePromptKo || ""}
+                                    onChange={(e) => {
+                                      const updatedTracks = [...playlistResult.tracks];
+                                      updatedTracks[index].imagePromptKo = e.target.value;
+                                      setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                    }}
+                                    placeholder="Google Imagen 2 한글 이미지 묘사/설명"
+                                    className="p-2 text-xs bg-[var(--color-bg-secondary)]/30 border border-[var(--color-border)]/70 rounded focus-ring font-normal text-[var(--color-sub)] placeholder-slate-400 mt-1"
+                                  />
                                 </div>
 
                                 {/* Veo 3 Prompt */}
@@ -1989,6 +2112,17 @@ export default function Home() {
                                       setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
                                     }}
                                     className="p-2 text-xs bg-[var(--color-bg-secondary)]/50 border border-[var(--color-border)] rounded focus-ring h-16 resize-none leading-relaxed"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={track.videoPromptKo || ""}
+                                    onChange={(e) => {
+                                      const updatedTracks = [...playlistResult.tracks];
+                                      updatedTracks[index].videoPromptKo = e.target.value;
+                                      setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                    }}
+                                    placeholder="Google Veo 3 한글 동영상 묘사/설명"
+                                    className="p-2 text-xs bg-[var(--color-bg-secondary)]/30 border border-[var(--color-border)]/70 rounded focus-ring font-normal text-[var(--color-sub)] placeholder-slate-400 mt-1"
                                   />
                                 </div>
                               </div>
@@ -2168,58 +2302,113 @@ export default function Home() {
             ) : (
               <div className="flex flex-col gap-3.5">
                 {history
-                  .filter(
-                    (item) =>
-                      item.prompt.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      item.idea.toLowerCase().includes(searchQuery.toLowerCase())
-                  )
-                  .map((item) => (
-                    <div
-                      key={item.id}
-                      onClick={() => loadHistoryItem(item)}
-                      className="p-4 bg-[var(--color-card)] border border-[var(--color-border)]/50 hover:border-[var(--color-point)] hover:bg-[var(--color-bg-secondary)]/50 rounded-xl transition-all cursor-pointer flex flex-col md:flex-row items-start justify-between gap-4 group"
-                    >
-                      <div className="flex-1 flex flex-col gap-2">
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="font-semibold text-slate-400">{item.timestamp}</span>
-                          <span className="bg-slate-100 text-slate-500 font-semibold px-2 py-0.2 rounded-md">
-                            {item.params.genre || "사용자 맞춤"}
+                  .filter((item) => {
+                    const textToSearch = [
+                      item.idea || "",
+                      item.prompt || "",
+                      item.doctorInput || "",
+                      item.doctorOutput || "",
+                      item.converterInput || "",
+                      item.converterOutput || "",
+                      item.playlistInput || "",
+                      item.type || "builder"
+                    ].join(" ").toLowerCase();
+                    return textToSearch.includes(searchQuery.toLowerCase());
+                  })
+                  .map((item) => {
+                    const itemType = item.type || "builder";
+                    let typeLabel = "Prompt Builder";
+                    let badgeColor = "bg-indigo-50 text-indigo-600 border-indigo-100";
+                    let title = item.idea || "자율 빌더 조립";
+                    let content = item.prompt || "";
+                    let extraBadge = null;
+
+                    if (itemType === "doctor") {
+                      typeLabel = "Prompt Doctor";
+                      badgeColor = "bg-emerald-50 text-emerald-600 border-emerald-100";
+                      title = item.idea || "프롬프트 닥터 처방";
+                      content = item.doctorOutput || "";
+                    } else if (itemType === "converter") {
+                      typeLabel = "Style Converter";
+                      badgeColor = "bg-amber-50 text-amber-600 border-amber-100";
+                      title = item.idea || "스타일 변환";
+                      content = item.converterOutput || "";
+                    } else if (itemType === "playlist") {
+                      typeLabel = "10곡 Playlist";
+                      badgeColor = "bg-rose-50 text-rose-600 border-rose-100";
+                      title = item.idea || "플레이리스트 생성";
+                      const tracksCount = item.playlistOutput?.tracks?.length || 0;
+                      content = item.playlistOutput?.youtubeMetadata?.title 
+                        ? `유튜브 타이틀: ${item.playlistOutput.youtubeMetadata.title} (${tracksCount}곡)`
+                        : `${tracksCount}곡의 오가닉 플레이리스트`;
+                      extraBadge = (
+                        <span className="bg-rose-100 text-rose-700 font-semibold px-2 py-0.5 rounded-md">
+                          {tracksCount} Tracks
+                        </span>
+                      );
+                    } else {
+                      if (item.params?.genre) {
+                        extraBadge = (
+                          <span className="bg-slate-100 text-slate-500 font-semibold px-2 py-0.5 rounded-md">
+                            {item.params.genre}
                           </span>
-                          <span className="bg-[var(--color-bg-secondary)] text-[var(--color-point)] border border-[var(--color-border)] font-bold px-1.5 py-0.2 rounded">
+                        );
+                      }
+                      if (item.score) {
+                        extraBadge = (
+                          <span className="bg-[var(--color-bg-secondary)] text-[var(--color-point)] border border-[var(--color-border)] font-bold px-1.5 py-0.5 rounded">
                             {item.score}점
                           </span>
+                        );
+                      }
+                    }
+
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => loadHistoryItem(item)}
+                        className="p-4 bg-[var(--color-card)] border border-[var(--color-border)]/50 hover:border-[var(--color-point)] hover:bg-[var(--color-bg-secondary)]/50 rounded-xl transition-all cursor-pointer flex flex-col md:flex-row items-start justify-between gap-4 group"
+                      >
+                        <div className="flex-1 flex flex-col gap-2">
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="font-semibold text-slate-400">{item.timestamp}</span>
+                            <span className={`border px-2 py-0.5 rounded-md font-bold text-[10px] uppercase ${badgeColor}`}>
+                              {typeLabel}
+                            </span>
+                            {extraBadge}
+                          </div>
+
+                          <div className="text-xs font-bold text-[var(--color-text)]">
+                            <span className="text-indigo-400 font-extrabold mr-1">Idea:</span>
+                            {title}
+                          </div>
+
+                          <p className="text-xs text-[var(--color-sub)] leading-normal line-clamp-2 bg-[var(--color-bg-secondary)] p-2 rounded border border-[var(--color-border)]/50 font-mono">
+                            {content}
+                          </p>
                         </div>
 
-                        <div className="text-xs font-bold text-[var(--color-text)]">
-                          <span className="text-indigo-400 font-extrabold mr-1">Idea:</span>
-                          {item.idea}
+                        <div className="flex items-center gap-2 self-end md:self-center">
+                          <button
+                            onClick={(e) => toggleFavoriteItem(item.id, e)}
+                            className={`p-1.5 rounded hover:bg-slate-100 transition-colors cursor-pointer ${
+                              item.favorite ? "text-amber-500" : "text-[var(--color-sub)]/70 hover:text-slate-600"
+                            }`}
+                            title={item.favorite ? "즐겨찾기 해제" : "즐겨찾기 등록"}
+                          >
+                            <Star size={14} fill={item.favorite ? "currentColor" : "none"} />
+                          </button>
+                          <button
+                            onClick={(e) => deleteHistoryItem(item.id, e)}
+                            className="p-1.5 rounded hover:bg-rose-50 text-[var(--color-sub)]/70 hover:text-rose-600 transition-colors cursor-pointer"
+                            title="삭제"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
-
-                        <p className="text-xs text-[var(--color-sub)] leading-normal line-clamp-2 bg-[var(--color-bg-secondary)] p-2 rounded border border-[var(--color-border)]/50">
-                          {item.prompt}
-                        </p>
                       </div>
-
-                      <div className="flex items-center gap-2 self-end md:self-center">
-                        <button
-                          onClick={(e) => toggleFavoriteItem(item.id, e)}
-                          className={`p-1.5 rounded hover:bg-slate-100 transition-colors cursor-pointer ${
-                            item.favorite ? "text-amber-500" : "text-[var(--color-sub)]/70 hover:text-slate-600"
-                          }`}
-                          title={item.favorite ? "즐겨찾기 해제" : "즐겨찾기 등록"}
-                        >
-                          <Star size={14} fill={item.favorite ? "currentColor" : "none"} />
-                        </button>
-                        <button
-                          onClick={(e) => deleteHistoryItem(item.id, e)}
-                          className="p-1.5 rounded hover:bg-rose-50 text-[var(--color-sub)]/70 hover:text-rose-600 transition-colors cursor-pointer"
-                          title="삭제"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             )}
           </div>
@@ -2270,9 +2459,6 @@ export default function Home() {
                   <strong className="text-[var(--color-text)]">스마트 프리셋:</strong> 공부방 로파이, 비 오는 밤 재즈, 신나는 드라이브 등 검증된 템플릿을 한 번의 클릭으로 로드할 수 있습니다.
                 </li>
                 <li>
-                  <strong className="text-[var(--color-text)]">무드 맵:</strong> 2차원 에너지-밝기 영역을 직접 클릭하면 곡의 장르, 악기 밸런스, 템포가 좌표 분석을 거쳐 맞춤으로 자동 로드됩니다.
-                </li>
-                <li>
                   <strong className="text-[var(--color-text)]">3단계 초보자 가이드:</strong> 각 파라미터(장르, 무드, BPM 등) 우측의 물음표(<code className="text-[var(--color-point)] font-bold font-mono">?</code>) 버튼을 클릭하여 이론적 설명부터 비유, 실제 소리 느낌까지 즉시 확인하세요.
                 </li>
               </ul>
@@ -2311,7 +2497,7 @@ export default function Home() {
                   <strong className="text-[var(--color-text)]">STYLE CONVERTER:</strong> 특정 유명 가수의 감성(예: NewJeans 느낌, Coldplay 느낌 등)을 입력하면, AI가 리리아가 정확하게 인식할 수 있는 전용 신시사이저, 시그니처 비트 질감, 보컬 톤 묘사로 분해하여 완벽한 영문 프롬프트로 가공합니다.
                 </li>
                 <li>
-                  <strong className="text-[var(--color-text)]">MY HISTORY:</strong> 최근 생성된 모든 최종 영문 프롬프트 및 설정값은 로컬에 자동 보관(최대 20개)되며, 다시 클릭하여 즉시 편집 상태로 로드하거나 별표를 눌러 즐겨찾기 보관할 수 있습니다.
+                  <strong className="text-[var(--color-text)]">MY HISTORY & Gist 원격 동기화:</strong> 빌더, 닥터, 변환기, 플레이리스트 등 모든 탭의 결과물이 히스토리에 자동 누적 저장됩니다. 설정에서 GitHub PAT와 Gist ID를 등록하면 여러 기기 간에 히스토리가 자동으로 원격 동기화(클라우드 백업)됩니다.
                 </li>
               </ul>
 
@@ -2400,6 +2586,68 @@ export default function Home() {
                 </a>
                 에서 무료로 발급받으실 수 있습니다.
               </div>
+
+              {/* Gist Sync Settings */}
+              <div className="border-t border-slate-100 pt-3 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <CloudLightning size={14} className="text-[var(--color-point)]" />
+                    GitHub Gist 히스토리 동기화 (선택)
+                  </h3>
+                  {isSyncing && (
+                    <span className="text-[10px] text-[var(--color-point)] animate-pulse font-semibold">동기화 중...</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  여러 브라우저/기기에서 히스토리를 공유하려면 GitHub 개인 토큰(PAT)과 Gist ID를 등록하세요.
+                </p>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-slate-600">GitHub Personal Access Token (PAT)</label>
+                  <input
+                    type="password"
+                    defaultValue={githubToken}
+                    placeholder="ghp_..."
+                    id="githubTokenInput"
+                    className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus-ring font-mono"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-slate-600">Gist ID</label>
+                  <div className="flex gap-2">
+                     <input
+                       type="text"
+                       defaultValue={gistId}
+                       placeholder="Gist ID를 입력하거나 우측 버튼 클릭"
+                       id="gistIdInput"
+                       className="flex-1 p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus-ring font-mono"
+                     />
+                     <button
+                       type="button"
+                       onClick={async () => {
+                         const tokenInput = (document.getElementById("githubTokenInput") as HTMLInputElement).value.trim();
+                         if (!tokenInput) {
+                           alert("Gist를 생성하려면 GitHub PAT가 먼저 입력되어야 합니다.");
+                           return;
+                         }
+                         try {
+                           setIsSyncing(true);
+                           const newId = await createNewGist(tokenInput, history);
+                           (document.getElementById("gistIdInput") as HTMLInputElement).value = newId;
+                           setGistId(newId);
+                           alert("새 Gist가 성공적으로 생성 및 연동되었습니다! 설정 저장(확인)을 눌러 완료해 주세요.");
+                         } catch (err: any) {
+                           alert("Gist 생성 실패: " + err.message);
+                         } finally {
+                           setIsSyncing(false);
+                         }
+                       }}
+                       className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold transition-colors cursor-pointer shrink-0"
+                     >
+                       새 Gist 생성
+                     </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
@@ -2415,7 +2663,9 @@ export default function Home() {
                 onClick={() => {
                   const key = (document.getElementById("apiKeyInput") as HTMLInputElement).value.trim();
                   const model = (document.getElementById("modelSelect") as HTMLSelectElement).value;
-                  saveSettings(key, model);
+                  const gitToken = (document.getElementById("githubTokenInput") as HTMLInputElement).value.trim();
+                  const gId = (document.getElementById("gistIdInput") as HTMLInputElement).value.trim();
+                  saveSettings(key, model, gitToken, gId);
                 }}
                 className="px-5 py-2 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-lg text-xs font-bold shadow-md shadow-indigo-100 transition-colors cursor-pointer"
               >

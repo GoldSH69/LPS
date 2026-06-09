@@ -45,12 +45,17 @@ body {
 /* Force Pretendard inheritance on all text-based components */
 body, input, select, textarea, button {
   font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
 }
 
 pre, code, textarea.font-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
 }
 
+::selection {
+  background-color: var(--color-point);
+  color: var(--color-bg);
+}
 
 /* Custom premium card design with user-defined variables */
 .glass-panel {
@@ -58,6 +63,13 @@ pre, code, textarea.font-mono {
   border: 1px solid var(--color-border);
   box-shadow: 0 10px 30px -5px var(--color-shadow);
   border-radius: 1rem;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease, background-color 0.35s ease;
+}
+
+.glass-panel:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-point);
+  box-shadow: 0 16px 40px -5px var(--color-shadow);
 }
 
 /* Custom Scrollbar using user-defined thumb colors */
