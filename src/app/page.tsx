@@ -192,7 +192,7 @@ interface HistoryItem {
 export default function Home() {
   // App States
   const [apiKey, setApiKey] = useState<string>("");
-  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-flash");
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-3.5-flash");
   const [activeTab, setActiveTab] = useState<"builder" | "doctor" | "converter" | "playlist" | "history">("builder");
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [showApiKeyWarning, setShowApiKeyWarning] = useState<boolean>(false);
@@ -255,7 +255,7 @@ export default function Home() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedKey = localStorage.getItem("lps_gemini_api_key") || "";
-      const savedModel = localStorage.getItem("lps_gemini_model") || "gemini-2.5-flash";
+      const savedModel = localStorage.getItem("lps_gemini_model") || "gemini-3.5-flash";
       const savedHistory = localStorage.getItem("lps_history") || "[]";
       setApiKey(savedKey);
       setSelectedModel(savedModel);
@@ -657,6 +657,15 @@ export default function Home() {
     let md = `# ${playlistResult.playlistTitle}\n\n`;
     md += `## 📋 기획 콘셉트\n${playlistResult.overallConcept}\n\n`;
     md += `## 🎼 구성 및 흐름 전략\n${playlistResult.flowStrategy}\n\n`;
+    
+    if (playlistResult.youtubeMetadata) {
+      md += `## 📺 유튜브 업로드 메타데이터 (YouTube Publishing Board)\n\n`;
+      md += `- **추천 제목:** ${playlistResult.youtubeMetadata.title}\n`;
+      md += `- **해시태그:** ${playlistResult.youtubeMetadata.hashtags.join(" ")}\n`;
+      md += `- **검색 키워드 (태그):** ${playlistResult.youtubeMetadata.tags.join(", ")}\n\n`;
+      md += `### 📝 상세 설명란 더보기 텍스트\n\`\`\`\n${playlistResult.youtubeMetadata.description}\n\`\`\`\n\n`;
+    }
+    
     md += `--- \n\n## 🎵 수록곡 목록 (Total 10 Tracks)\n\n`;
 
     playlistResult.tracks.forEach((t) => {
@@ -733,9 +742,10 @@ export default function Home() {
               }}
               className="bg-transparent font-medium text-[var(--color-point)] focus:outline-none cursor-pointer"
             >
+              <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
               <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
               <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-              <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
             </select>
           </div>
 
@@ -1665,6 +1675,116 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* YouTube Publishing Board */}
+                {playlistResult.youtubeMetadata && (
+                  <div className="glass-panel p-6 border-[var(--color-border)] bg-[var(--color-card)] flex flex-col gap-4">
+                    <div className="flex items-center justify-between border-b border-[var(--color-border)]/50 pb-2">
+                      <span className="text-xs font-bold text-[var(--color-point)] bg-[var(--color-bg-secondary)] px-2 py-0.5 rounded border border-[var(--color-border)]/50 flex items-center gap-1">
+                        📺 YouTube Publishing Board (유튜브 업로드 메타데이터)
+                      </span>
+                      <span className="text-[10px] text-[var(--color-sub)] font-medium">유튜브 업로드 시 복사해서 사용하세요</span>
+                    </div>
+
+                    <div className="flex flex-col gap-4">
+                      {/* Title */}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-[var(--color-text)]">추천 동영상 제목 (Title)</label>
+                          <button
+                            onClick={() => copyToClipboard(playlistResult.youtubeMetadata.title, setCopied)}
+                            className="text-xs text-[var(--color-point)] hover:underline cursor-pointer flex items-center gap-1 font-semibold"
+                          >
+                            <Copy size={11} /> 복사
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={playlistResult.youtubeMetadata.title}
+                          onChange={(e) => {
+                            setPlaylistResult({
+                              ...playlistResult,
+                              youtubeMetadata: {
+                                ...playlistResult.youtubeMetadata,
+                                title: e.target.value
+                              }
+                            });
+                          }}
+                          className="p-2.5 text-xs bg-[var(--color-bg-secondary)]/30 border border-[var(--color-border)] rounded-lg font-semibold text-[var(--color-text)] focus-ring"
+                        />
+                      </div>
+
+                      {/* Description */}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-[var(--color-text)]">상세 설명란 (Description & Timeline)</label>
+                          <button
+                            onClick={() => copyToClipboard(playlistResult.youtubeMetadata.description, setCopied)}
+                            className="text-xs text-[var(--color-point)] hover:underline cursor-pointer flex items-center gap-1 font-semibold"
+                          >
+                            <Copy size={11} /> 복사
+                          </button>
+                        </div>
+                        <textarea
+                          value={playlistResult.youtubeMetadata.description}
+                          onChange={(e) => {
+                            setPlaylistResult({
+                              ...playlistResult,
+                              youtubeMetadata: {
+                                ...playlistResult.youtubeMetadata,
+                                description: e.target.value
+                              }
+                            });
+                          }}
+                          className="p-2.5 text-xs bg-[var(--color-bg-secondary)]/30 border border-[var(--color-border)] rounded-lg text-[var(--color-sub)] focus-ring h-40 font-mono resize-none leading-relaxed"
+                        />
+                      </div>
+
+                      {/* Hashtags & Tags split row */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Hashtags */}
+                        <div className="flex flex-col gap-1.5 p-3 bg-[var(--color-bg-secondary)]/40 rounded-lg border border-[var(--color-border)]/40">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-[var(--color-point)]">추천 해시태그 (#Hashtags)</label>
+                            <button
+                              onClick={() => copyToClipboard(playlistResult.youtubeMetadata.hashtags.join(" "), setCopied)}
+                              className="text-[10px] text-[var(--color-point)] hover:underline cursor-pointer flex items-center gap-1 font-bold"
+                            >
+                              <Copy size={10} /> 모두 복사
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {playlistResult.youtubeMetadata.hashtags.map((tag, idx) => (
+                              <span key={idx} className="text-[11px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Search Tags */}
+                        <div className="flex flex-col gap-1.5 p-3 bg-[var(--color-bg-secondary)]/40 rounded-lg border border-[var(--color-border)]/40">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-[var(--color-point)]">태그 / 검색 키워드 (Tags)</label>
+                            <button
+                              onClick={() => copyToClipboard(playlistResult.youtubeMetadata.tags.join(", "), setCopied)}
+                              className="text-[10px] text-[var(--color-point)] hover:underline cursor-pointer flex items-center gap-1 font-bold"
+                            >
+                              <Copy size={10} /> 모두 복사
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {playlistResult.youtubeMetadata.tags.map((tag, idx) => (
+                              <span key={idx} className="text-[10px] font-medium text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Tracks list (Accordion style) */}
                 <div className="flex flex-col gap-4">
                   <h3 className="text-sm font-bold text-[var(--color-text)] flex items-center gap-1.5">
@@ -2074,7 +2194,7 @@ export default function Home() {
                   <strong className="text-[var(--color-text)]">LPS에 Key 저장:</strong> 우측 상단의 <strong className="text-[var(--color-point)]">Gemini API Key 등록 필요</strong> 버튼을 클릭하여 복사한 API Key를 입력한 뒤 저장합니다. 키는 브라우저 내부(<code className="bg-[var(--color-bg-secondary)] px-1 rounded font-mono">localStorage</code>)에만 안전하게 로컬 보관되며, 외부 서버로 전혀 전송되지 않습니다.
                 </li>
                 <li>
-                  <strong className="text-[var(--color-text)]">모델 권장사항:</strong> 속도와 효율성 면에서 기본 설정된 <strong className="text-[var(--color-point)]">Gemini 2.5 Flash</strong> 모델 사용을 강력히 권장합니다.
+                  <strong className="text-[var(--color-text)]">모델 및 안정적인 폴백 (Sequential Polling):</strong> LPS는 기본적으로 최신 고성능 고속 모델인 <strong className="text-[var(--color-point)]">Gemini 3.5 Flash</strong>를 사용합니다. 호출 실패나 속도 제한 시 자동으로 안정적인 폴백 큐(<strong className="text-[var(--color-point)]">gemini-3.5-flash ➡️ gemini-2.5-flash ➡️ gemini-2.5-flash-lite ➡️ gemini-2.5-pro</strong>)를 순차적으로 작동시켜 응답을 끝까지 보장합니다.
                 </li>
               </ul>
 
@@ -2103,7 +2223,7 @@ export default function Home() {
               </h3>
               <ul className="list-disc list-inside flex flex-col gap-2.5 text-xs text-[var(--color-sub)]">
                 <li>
-                  <strong className="text-[var(--color-text)]">대주제 및 배치 흐름 입력:</strong> 전체 플레이리스트 콘셉트와 곡 배치 성격(빌드업, 일관 차분 등)을 선택한 뒤 생성하면 **10곡 수록곡 명세**와 **흐름 전략 기획안**이 일괄 설계됩니다.
+                  <strong className="text-[var(--color-text)]">대주제 및 배치 흐름 입력:</strong> 전체 플레이리스트 콘셉트와 곡 배치 성격(빌드업, 일관 차분 등)을 선택한 뒤 생성하면 **10곡 수록곡 명세**, **흐름 전략 기획안** 및 **유튜브용 발행 메타데이터(제목, 설명란 타임라인 텍스트, 태그 키워드 등)**가 일괄 설계됩니다.
                 </li>
                 <li>
                   <strong className="text-[var(--color-text)]">멀티미디어 프롬프트 자동화:</strong> Google Lyria(음악) 외에 곡당 **Google Imagen 2(썸네일 이미지)** 및 **Google Veo 3(배경 동영상 루프)** 생성용 영어 프롬프트가 함께 정밀 작성됩니다.
@@ -2200,9 +2320,10 @@ export default function Home() {
                   defaultValue={selectedModel}
                   className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus-ring cursor-pointer"
                 >
-                  <option value="gemini-2.5-flash">Gemini 2.5 Flash (가장 빠름 - 권장)</option>
+                  <option value="gemini-3.5-flash">Gemini 3.5 Flash (가장 빠름 - 기본 권장)</option>
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash (안정적)</option>
+                  <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (경량)</option>
                   <option value="gemini-2.5-pro">Gemini 2.5 Pro (더 정밀함)</option>
-                  <option value="gemini-1.5-flash">Gemini 1.5 Flash (하위 호환)</option>
                 </select>
               </div>
 

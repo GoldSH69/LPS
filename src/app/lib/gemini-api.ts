@@ -47,56 +47,77 @@ export interface StyleConversionResult {
   tempoFeel: string;
 }
 
-async function callGemini(apiKey: string, prompt: string, model: string = "gemini-2.5-flash", jsonMode: boolean = false): Promise<string> {
+const FALLBACK_MODELS = [
+  "gemini-3.5-flash",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-pro"
+];
+
+async function callGemini(apiKey: string, prompt: string, model: string = "gemini-3.5-flash", jsonMode: boolean = false): Promise<string> {
   if (!apiKey) {
     throw new Error("Gemini API Key가 설정되지 않았습니다. 우측 상단 설정 아이콘을 클릭하여 API Key를 등록해 주세요.");
   }
 
-  // Fallback to 1.5-flash if needed
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  // Create a fallback queue beginning with the preferred model, then other models in sequential order
+  const queue = [model, ...FALLBACK_MODELS.filter(m => m !== model)];
+  let lastError: any = null;
 
-  const requestBody = {
-    contents: [
-      {
-        parts: [
+  for (const currentModel of queue) {
+    try {
+      console.log(`Gemini API 호출 시도 모델: ${currentModel}`);
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+
+      const requestBody = {
+        contents: [
           {
-            text: prompt,
+            parts: [
+              {
+                text: prompt,
+              },
+            ],
           },
         ],
-      },
-    ],
-    generationConfig: jsonMode
-      ? {
-          responseMimeType: "application/json",
-        }
-      : undefined,
-  };
+        generationConfig: jsonMode
+          ? {
+              responseMimeType: "application/json",
+            }
+          : undefined,
+      };
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  });
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const errorMessage = errorData?.error?.message || `HTTP error! status: ${response.status}`;
-    throw new Error(`Gemini API 호출 실패: ${errorMessage}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData?.error?.message || `HTTP error! status: ${response.status}`;
+        throw new Error(`[${currentModel}] 호출 실패: ${errorMessage}`);
+      }
+
+      const responseData = await response.json();
+      const text = responseData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error(`[${currentModel}] API가 빈 응답을 반환했습니다.`);
+      }
+
+      console.log(`Gemini API 호출 성공 모델: ${currentModel}`);
+      return text;
+    } catch (error: any) {
+      console.warn(`모델 ${currentModel} 호출 실패, 다음 모델 시도 중...`, error.message);
+      lastError = error;
+    }
   }
 
-  const responseData = await response.json();
-  const text = responseData?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    throw new Error("Gemini API가 빈 응답을 반환했습니다.");
-  }
-
-  return text;
+  throw new Error(`Gemini API 모든 모델 호출에 실패했습니다. 마지막 오류: ${lastError?.message}`);
 }
 
 // 1. AI Idea Generator
-export async function generateMusicIdea(apiKey: string, ideaText: string, model: string = "gemini-2.5-flash"): Promise<MusicAnalysisResult> {
+export async function generateMusicIdea(apiKey: string, ideaText: string, model: string = "gemini-3.5-flash"): Promise<MusicAnalysisResult> {
   const prompt = `당신은 세계 최고 수준의 음악 프로듀서이자 구글 Lyria 프롬프트 엔지니어입니다.
 사용자의 아이디어(감정, 상황, 장소, 스토리 등)를 분석하여 구글 Lyria 음악 생성 모델에 최적화된 음악적 속성을 추천하세요.
 
@@ -139,7 +160,7 @@ export async function optimizePrompt(
     production: string;
     customLyrics?: string;
   },
-  model: string = "gemini-2.5-flash"
+  model: string = "gemini-3.5-flash"
 ): Promise<string> {
   const instrumentsStr = params.instruments.join(", ");
   const lyricsSection = params.customLyrics ? `\nLyrics:\n${params.customLyrics}` : "";
@@ -172,7 +193,7 @@ ${lyricsSection ? `- Custom Lyrics:\n${params.customLyrics}` : ""}
 }
 
 // 3. Prompt Quality Analyzer
-export async function analyzePromptQuality(apiKey: string, finalPrompt: string, model: string = "gemini-2.5-flash"): Promise<PromptScoreBreakdown> {
+export async function analyzePromptQuality(apiKey: string, finalPrompt: string, model: string = "gemini-3.5-flash"): Promise<PromptScoreBreakdown> {
   const prompt = `당신은 구글 Lyria 프롬프트 감리사입니다.
 제시된 프롬프트가 구글 Lyria (Lyria 3 Pro) 음악 생성 가이드라인에 얼마나 부합하는지 100점 만점으로 평가해 주세요.
 
@@ -209,7 +230,7 @@ export async function analyzePromptQuality(apiKey: string, finalPrompt: string, 
 }
 
 // 4. Prompt Doctor
-export async function runPromptDoctor(apiKey: string, rawPrompt: string, model: string = "gemini-2.5-flash"): Promise<DoctorAnalysisResult> {
+export async function runPromptDoctor(apiKey: string, rawPrompt: string, model: string = "gemini-3.5-flash"): Promise<DoctorAnalysisResult> {
   const prompt = `당신은 프롬프트 닥터(Prompt Doctor)입니다.
 사용자가 작성한 기존 음악 프롬프트를 분석하여 구글 Lyria 규격 관점에서 무엇이 부족하고 비어있는지 진단하고, 고품질의 구글 Lyria 최적화 프롬프트로 고쳐주세요.
 
@@ -228,7 +249,7 @@ export async function runPromptDoctor(apiKey: string, rawPrompt: string, model: 
 }
 
 // 5. Style Converter
-export async function convertStyle(apiKey: string, styleKeyword: string, model: string = "gemini-2.5-flash"): Promise<StyleConversionResult> {
+export async function convertStyle(apiKey: string, styleKeyword: string, model: string = "gemini-3.5-flash"): Promise<StyleConversionResult> {
   const prompt = `당신은 음악 스타일 변환기(Style Converter)입니다.
 사용자가 입력한 유명 아티스트의 이름이나 특정 곡의 느낌(Vibe) 키워드를 분석하여, 구글 Lyria가 가장 잘 이해할 수 있는 구체적인 장르 및 음악적 장치(악기, 보컬, 속도감)로 변환해 주세요.
 
@@ -275,6 +296,12 @@ export interface PlaylistResult {
   playlistTitle: string;
   overallConcept: string;
   flowStrategy: string;
+  youtubeMetadata: {
+    title: string;
+    description: string;
+    hashtags: string[];
+    tags: string[];
+  };
   tracks: PlaylistTrack[];
 }
 
@@ -282,7 +309,7 @@ export async function generatePlaylist(
   apiKey: string,
   concept: string,
   flowOption: string,
-  model: string = "gemini-2.5-flash"
+  model: string = "gemini-3.5-flash"
 ): Promise<PlaylistResult> {
   const prompt = `당신은 세계 최고의 음악 감독이자 비주얼 프롬프트 디자이너, 다국어 영상 콘텐츠 프로듀서입니다.
 사용자가 입력한 플레이리스트 대주제와 곡 흐름 전략을 바탕으로 총 10곡으로 구성된 프리미엄 음악 플레이리스트와 각 트랙별 사운드/이미지/동영상 프롬프트 및 다국어 자막을 생성해 주세요.
@@ -296,12 +323,19 @@ export async function generatePlaylist(
 3. 각 곡에 배경 비디오/루프용 'Google Veo 3' 동영상 프롬프트(영문)를 생성하세요. 씬의 부드러운 움직임(cinematic loop video, slow panning, warm light leak)을 묘사하세요.
 4. 각 곡의 썸네일에 들어갈 타이틀 자막(thumbnailCaption) 및 씬(Scene)별 영상 자막(scenes - 총 3개 씬)을 한국어, 영어, 일본어 3개 국어로 생성해 주세요.
 5. 왜 이 10곡을 선택했고 어떻게 유기적으로 감정선/에너지를 이어지게 구성했는지 그 전략적 기획서(flowStrategy)를 상세하게 한국어로 작성해 주세요.
+6. 유튜브 업로드 시 활용할 트렌디하고 조회수를 극대화할 수 있는 유튜브 메타데이터(youtubeMetadata: 제목, 상세 더보기 설명란 텍스트, 해시태그 목록, 추천 태그 검색어 목록)를 한국어 중심으로 일괄 생성하세요. 설명란(description)에는 수록곡 목록의 기획/해설이 정갈하게 포함되어야 합니다.
 
 반드시 다음 JSON 스키마 형식으로만 응답해야 합니다. 추가 설명이나 코드 블록 기호 없이 순수 JSON 문자열만 반환하세요:
 {
   "playlistTitle": "플레이리스트 전체 타이틀 (한글/영문 병기)",
   "overallConcept": "전체 기획 컨셉 및 무드 설명 (한국어)",
   "flowStrategy": "플레이리스트 구성 흐름 및 기획 전략 사유 (한국어, 매우 자세하게 작성)",
+  "youtubeMetadata": {
+    "title": "추천 유튜브 영상 제목 (클릭을 유도하는 감성적인 문구)",
+    "description": "추천 유튜브 상세 설명란 텍스트 (곡 해설 및 기획 방향 포함)",
+    "hashtags": ["추천 해시태그 (#로 시작, 5개 이상)"],
+    "tags": ["추천 유튜브 검색어 및 키워드 태그 (10개 이상)"]
+  },
   "tracks": [
     {
       "trackNumber": 1,
@@ -363,7 +397,7 @@ export async function regenerateSingleTrack(
     previousTrack?: { title: string; musicPrompt: string; description: string };
     nextTrack?: { title: string; musicPrompt: string; description: string };
   },
-  model: string = "gemini-2.5-flash"
+  model: string = "gemini-3.5-flash"
 ): Promise<PlaylistTrack> {
   const prevContext = params.previousTrack
     ? `- 이전 트랙 (#${params.trackNumber - 1}): 제목: "${params.previousTrack.title}", 음악 프롬프트: "${params.previousTrack.musicPrompt}", 설명: "${params.previousTrack.description}"`
