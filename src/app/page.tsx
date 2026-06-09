@@ -41,6 +41,15 @@ import {
   PlaylistResult
 } from "./lib/gemini-api";
 
+const MASTER_PASSWORD_HASH = process.env.NEXT_PUBLIC_APP_PASSWORD_HASH || "3b01e405e3f28d84457fb1e06fa9d0c649980d210940566ae8586df111be1744"; // lps1234 해시
+
+async function sha256(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 // Helper function to render basic markdown bold syntax (**text**) and line breaks in React
 const renderMarkdownText = (text: string) => {
   if (!text) return null;
@@ -234,6 +243,12 @@ export default function Home() {
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [showApiKeyWarning, setShowApiKeyWarning] = useState<boolean>(false);
 
+  // App Gateway Password and IP States
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
+  const [passwordInput, setPasswordInput] = useState<string>("");
+  const [passwordError, setPasswordError] = useState<string>("");
+  const [accessIps, setAccessIps] = useState<string[]>([]);
+
   // Builder States
   const [ideaInput, setIdeaInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -297,7 +312,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Sync utilities
-  const pullHistoryFromGist = async (token: string, id: string): Promise<HistoryItem[]> => {
+  const pullHistoryFromGist = async (token: string, id: string): Promise<{ remoteHistory: HistoryItem[], remoteIps: string[] }> => {
     const response = await fetch(`https://api.github.com/gists/${id}`, {
       headers: {
         Authorization: `token ${token}`,
@@ -308,15 +323,16 @@ export default function Home() {
       throw new Error(`Gist 로드 실패: ${response.statusText}`);
     }
     const data = await response.json();
-    const fileContent = data.files["lps_history.json"]?.content;
-    if (!fileContent) {
-      return [];
-    }
-    return JSON.parse(fileContent);
+    const historyContent = data.files["lps_history.json"]?.content;
+    const remoteHistory = historyContent ? JSON.parse(historyContent) : [];
+    const ipContent = data.files["lps_access_log.json"]?.content;
+    const remoteIps = ipContent ? JSON.parse(ipContent) : [];
+    return { remoteHistory, remoteIps };
   };
 
-  const pushHistoryToGist = async (token: string, id: string, historyList: HistoryItem[]) => {
+  const pushHistoryToGist = async (token: string, id: string, historyList: HistoryItem[], ipList?: string[]) => {
     try {
+      const currentIps = ipList || JSON.parse(localStorage.getItem("lps_access_ips") || "[]");
       await fetch(`https://api.github.com/gists/${id}`, {
         method: "PATCH",
         headers: {
@@ -325,10 +341,13 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          description: "Lyria Prompt Studio History Backup",
+          description: "Lyria Prompt Studio History & Access Log Backup",
           files: {
             "lps_history.json": {
               content: JSON.stringify(historyList, null, 2),
+            },
+            "lps_access_log.json": {
+              content: JSON.stringify(currentIps, null, 2),
             },
           },
         }),
@@ -339,6 +358,7 @@ export default function Home() {
   };
 
   const createNewGist = async (token: string, historyList: HistoryItem[]): Promise<string> => {
+    const currentIps = JSON.parse(localStorage.getItem("lps_access_ips") || "[]");
     const response = await fetch("https://api.github.com/gists", {
       method: "POST",
       headers: {
@@ -347,11 +367,14 @@ export default function Home() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        description: "Lyria Prompt Studio History Backup",
+        description: "Lyria Prompt Studio History & Access Log Backup",
         public: false,
         files: {
           "lps_history.json": {
             content: JSON.stringify(historyList, null, 2),
+          },
+          "lps_access_log.json": {
+            content: JSON.stringify(currentIps, null, 2),
           },
         },
       }),
@@ -380,43 +403,133 @@ export default function Home() {
     });
   };
 
-  // Initialize and Load Local Storage
+  // IP logging utility
+  const logAccessIp = async (gitToken?: string, gId?: string, currentIps?: string[]) => {
+    try {
+      const res = await fetch("https://api.ipify.org?format=json");
+      if (!res.ok) return;
+      const data = await res.json();
+      const clientIp = data.ip;
+      if (!clientIp) return;
+
+      const ipList = currentIps || JSON.parse(localStorage.getItem("lps_access_ips") || "[]");
+      if (!ipList.includes(clientIp)) {
+        const updatedList = [...ipList, clientIp];
+        setAccessIps(updatedList);
+        localStorage.setItem("lps_access_ips", JSON.stringify(updatedList));
+
+        const token = gitToken || localStorage.getItem("lps_github_token") || "";
+        const id = gId || localStorage.getItem("lps_gist_id") || "";
+        const savedHistory = localStorage.getItem("lps_history") || "[]";
+        const currentHistoryList = JSON.parse(savedHistory);
+
+        if (token && id) {
+          pushHistoryToGist(token, id, currentHistoryList, updatedList);
+        }
+      }
+    } catch (err) {
+      console.error("IP 로깅 실패:", err);
+    }
+  };
+
+  // App Initialization helper after unlock
+  const initAppData = (key: string, model: string, localHist: HistoryItem[], gitToken: string, gId: string) => {
+    setApiKey(key);
+    setSelectedModel(model);
+    setGithubToken(gitToken);
+    setGistId(gId);
+    setHistory(localHist);
+
+    if (!key) {
+      setShowApiKeyWarning(true);
+      setSettingsOpen(true);
+    }
+
+    const savedIps = localStorage.getItem("lps_access_ips") || "[]";
+    const parsedIps = JSON.parse(savedIps);
+    setAccessIps(parsedIps);
+
+    if (gitToken && gId) {
+      setIsSyncing(true);
+      pullHistoryFromGist(gitToken, gId)
+        .then(({ remoteHistory, remoteIps }) => {
+          const mergedHist = mergeHistory(localHist, remoteHistory);
+          setHistory(mergedHist);
+          localStorage.setItem("lps_history", JSON.stringify(mergedHist));
+
+          const mergedIps = Array.from(new Set([...parsedIps, ...remoteIps]));
+          setAccessIps(mergedIps);
+          localStorage.setItem("lps_access_ips", JSON.stringify(mergedIps));
+
+          pushHistoryToGist(gitToken, gId, mergedHist, mergedIps);
+          logAccessIp(gitToken, gId, mergedIps);
+        })
+        .catch((err) => {
+          console.error("Gist 동기화 중 오류 발생:", err);
+          logAccessIp(gitToken, gId, parsedIps);
+        })
+        .finally(() => {
+          setIsSyncing(false);
+        });
+    } else {
+      logAccessIp("", "", parsedIps);
+    }
+  };
+
+  // Password Verification Handlers
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError("");
+    
+    if (!passwordInput.trim()) {
+      setPasswordError("비밀번호를 입력해 주세요.");
+      return;
+    }
+
+    try {
+      const hash = await sha256(passwordInput.trim());
+      if (hash === MASTER_PASSWORD_HASH) {
+        localStorage.setItem("lps_app_access_password_hash", hash);
+        setIsUnlocked(true);
+        
+        const savedKey = localStorage.getItem("lps_gemini_api_key") || "";
+        const savedModel = localStorage.getItem("lps_gemini_model") || "auto";
+        const savedHistory = localStorage.getItem("lps_history") || "[]";
+        const savedGitToken = localStorage.getItem("lps_github_token") || "";
+        const savedGistId = localStorage.getItem("lps_gist_id") || "";
+        const localHist = JSON.parse(savedHistory);
+
+        initAppData(savedKey, savedModel, localHist, savedGitToken, savedGistId);
+      } else {
+        setPasswordError("비밀번호가 올바르지 않습니다.");
+      }
+    } catch (err) {
+      setPasswordError("인증 중 오류가 발생했습니다.");
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("lps_app_access_password_hash");
+    setIsUnlocked(false);
+    window.location.reload();
+  };
+
+  // Initialize and Load Local Storage (Check Password Gatekeeper)
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const savedPassHash = localStorage.getItem("lps_app_access_password_hash") || "";
       const savedKey = localStorage.getItem("lps_gemini_api_key") || "";
       const savedModel = localStorage.getItem("lps_gemini_model") || "auto";
       const savedHistory = localStorage.getItem("lps_history") || "[]";
       const savedGitToken = localStorage.getItem("lps_github_token") || "";
       const savedGistId = localStorage.getItem("lps_gist_id") || "";
-
-      setApiKey(savedKey);
-      setSelectedModel(savedModel);
-      setGithubToken(savedGitToken);
-      setGistId(savedGistId);
-
       const localHist = JSON.parse(savedHistory);
-      setHistory(localHist);
 
-      if (!savedKey) {
-        setShowApiKeyWarning(true);
-        setSettingsOpen(true);
-      }
-
-      if (savedGitToken && savedGistId) {
-        setIsSyncing(true);
-        pullHistoryFromGist(savedGitToken, savedGistId)
-          .then((remoteHistory) => {
-            const merged = mergeHistory(localHist, remoteHistory);
-            setHistory(merged);
-            localStorage.setItem("lps_history", JSON.stringify(merged));
-            pushHistoryToGist(savedGitToken, savedGistId, merged);
-          })
-          .catch((err) => {
-            console.error("Gist 동기화 중 오류 발생:", err);
-          })
-          .finally(() => {
-            setIsSyncing(false);
-          });
+      if (savedPassHash === MASTER_PASSWORD_HASH) {
+        setIsUnlocked(true);
+        initAppData(savedKey, savedModel, localHist, savedGitToken, savedGistId);
+      } else {
+        setIsUnlocked(false);
       }
     }
   }, []);
@@ -472,11 +585,18 @@ export default function Home() {
     if (token && id) {
       setIsSyncing(true);
       pullHistoryFromGist(token, id)
-        .then((remoteHistory) => {
+        .then(({ remoteHistory, remoteIps }) => {
           const merged = mergeHistory(history, remoteHistory);
           setHistory(merged);
           localStorage.setItem("lps_history", JSON.stringify(merged));
-          pushHistoryToGist(token, id, merged);
+
+          const localIps = JSON.parse(localStorage.getItem("lps_access_ips") || "[]");
+          const mergedIps = Array.from(new Set([...localIps, ...remoteIps]));
+          setAccessIps(mergedIps);
+          localStorage.setItem("lps_access_ips", JSON.stringify(mergedIps));
+
+          pushHistoryToGist(token, id, merged, mergedIps);
+          logAccessIp(token, id, mergedIps);
         })
         .catch((err) => {
           alert("Gist 동기화 중 오류 발생: " + err.message);
@@ -910,6 +1030,54 @@ export default function Home() {
     e.stopPropagation();
     setActiveTooltip(activeTooltip === optionKey ? null : optionKey);
   };
+
+  if (!isUnlocked) {
+    return (
+      <div className="relative min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-4">
+        <div className="ambient-glow-1"></div>
+        <div className="ambient-glow-2"></div>
+        <div className="w-full max-w-md glass-panel p-8 flex flex-col gap-6 items-center shadow-2xl relative z-10 animate-scale-up">
+          <div className="flex flex-col items-center gap-2">
+            <div className="p-3 rounded-2xl bg-[var(--color-point)]/10 text-[var(--color-point)] border border-[var(--color-point)]/20 shadow-inner">
+              <CloudLightning size={32} className="animate-pulse" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-[var(--color-text)] mt-2">
+              Lyria Prompt Studio
+            </h1>
+            <p className="text-xs text-[var(--color-sub)] text-center">
+              이 페이지는 비밀번호 보호로 잠겨 있습니다.<br />액세스 패스워드를 입력하세요.
+            </p>
+          </div>
+
+          <form onSubmit={handleUnlock} className="w-full flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="비밀번호 입력..."
+                className="w-full p-3 text-sm bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl focus-ring text-center tracking-widest font-mono"
+              />
+              {passwordError && (
+                <p className="text-xs text-rose-500 text-center font-semibold animate-pulse">{passwordError}</p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-3 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-100 transition-colors cursor-pointer"
+            >
+              접속하기
+            </button>
+          </form>
+
+          <div className="text-[10px] text-[var(--color-sub)]/70">
+            GitHub Pages 보안 게이트웨이
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen pb-12 overflow-x-hidden">
@@ -2645,6 +2813,38 @@ export default function Home() {
                      >
                        새 Gist 생성
                      </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Access Security and IP Logs */}
+              <div className="border-t border-slate-100 pt-3 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    🔑 기기 접속 보안 관리
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                  >
+                    이 기기에서 로그아웃
+                  </button>
+                </div>
+                <div className="flex flex-col gap-1.5 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                    🌐 최근 접속 허용된 고유 IP 목록 ({accessIps.length}개)
+                  </span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {accessIps.length === 0 ? (
+                      <span className="text-[10px] text-slate-400">등록된 접속 IP 정보가 없습니다.</span>
+                    ) : (
+                      accessIps.map((ip, idx) => (
+                        <span key={idx} className="bg-slate-200/70 border border-slate-300/50 text-slate-700 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                          {ip}
+                        </span>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
