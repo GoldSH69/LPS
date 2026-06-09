@@ -47,25 +47,45 @@ export interface StyleConversionResult {
   tempoFeel: string;
 }
 
-const FALLBACK_MODELS = [
-  "gemini-3.5-flash",
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-2.5-pro"
-];
+export const QUEUES = {
+  // 10-track Playlist & single track regeneration (Highest complexity)
+  playlist: ["gemini-2.5-pro", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"],
+  
+  // Prompt Optimization & Doctor (Medium complexity, creative generation)
+  prompt: ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
+  
+  // Idea generation & Style conversion & Quality analysis (Low/Medium classification and translation)
+  helper: ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
+};
 
-async function callGemini(apiKey: string, prompt: string, model: string = "gemini-3.5-flash", jsonMode: boolean = false): Promise<string> {
+export function getModelQueue(preferredModel: string, taskQueue: string[]): string[] {
+  if (!preferredModel || preferredModel === "auto") {
+    return taskQueue;
+  }
+  // If user selected a specific model, try that first, then fall back in taskQueue order
+  return [preferredModel, ...taskQueue.filter(m => m !== preferredModel)];
+}
+
+async function callGemini(
+  apiKey: string, 
+  prompt: string, 
+  modelOrQueue: string | string[] = "gemini-3.5-flash", 
+  jsonMode: boolean = false
+): Promise<string> {
   if (!apiKey) {
     throw new Error("Gemini API Key가 설정되지 않았습니다. 우측 상단 설정 아이콘을 클릭하여 API Key를 등록해 주세요.");
   }
 
-  // Create a fallback queue beginning with the preferred model, then other models in sequential order
-  const queue = [model, ...FALLBACK_MODELS.filter(m => m !== model)];
+  // Create a fallback queue
+  const queue = Array.isArray(modelOrQueue)
+    ? modelOrQueue
+    : [modelOrQueue, "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"].filter((value, index, self) => self.indexOf(value) === index);
+  
   let lastError: any = null;
 
   for (const currentModel of queue) {
     try {
-      console.log(`Gemini API 호출 시도 모델: ${currentModel}`);
+      console.log(`Gemini API 호출 시도 모델: ${currentModel} (대기열: ${queue.join(" ➡️ ")})`);
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
 
       const requestBody = {
@@ -117,7 +137,7 @@ async function callGemini(apiKey: string, prompt: string, model: string = "gemin
 }
 
 // 1. AI Idea Generator
-export async function generateMusicIdea(apiKey: string, ideaText: string, model: string = "gemini-3.5-flash"): Promise<MusicAnalysisResult> {
+export async function generateMusicIdea(apiKey: string, ideaText: string, model: string = "auto"): Promise<MusicAnalysisResult> {
   const prompt = `당신은 세계 최고 수준의 음악 프로듀서이자 구글 Lyria 프롬프트 엔지니어입니다.
 사용자의 아이디어(감정, 상황, 장소, 스토리 등)를 분석하여 구글 Lyria 음악 생성 모델에 최적화된 음악적 속성을 추천하세요.
 
@@ -143,7 +163,7 @@ export async function generateMusicIdea(apiKey: string, ideaText: string, model:
   "similar_prompts": ["유사한 분위기를 자아낼 수 있는 다른 시적 상황 묘사 (한국어, 최소 3개)"]
 }`;
 
-  const jsonText = await callGemini(apiKey, prompt, model, true);
+  const jsonText = await callGemini(apiKey, prompt, getModelQueue(model, QUEUES.helper), true);
   return JSON.parse(jsonText.trim()) as MusicAnalysisResult;
 }
 
@@ -160,7 +180,7 @@ export async function optimizePrompt(
     production: string;
     customLyrics?: string;
   },
-  model: string = "gemini-3.5-flash"
+  model: string = "auto"
 ): Promise<string> {
   const instrumentsStr = params.instruments.join(", ");
   const lyricsSection = params.customLyrics ? `\nLyrics:\n${params.customLyrics}` : "";
@@ -188,12 +208,12 @@ ${lyricsSection ? `- Custom Lyrics:\n${params.customLyrics}` : ""}
 4. 가사(Lyrics)가 있다면, Lyrics: 섹션을 하단에 배치하고, Lyria 3 Pro 규격에 맞춰 [Intro], [Verse 1], [Chorus], [Outro] 같은 구조 마커를 가사 앞에 붙여주세요.
 5. 응답으로 오직 생성된 '최종 영문 프롬프트' 텍스트만 출력하세요. 설명글이나 따옴표 등을 붙이지 마세요.`;
 
-  const optimizedText = await callGemini(apiKey, prompt, model, false);
+  const optimizedText = await callGemini(apiKey, prompt, getModelQueue(model, QUEUES.prompt), false);
   return optimizedText.trim();
 }
 
 // 3. Prompt Quality Analyzer
-export async function analyzePromptQuality(apiKey: string, finalPrompt: string, model: string = "gemini-3.5-flash"): Promise<PromptScoreBreakdown> {
+export async function analyzePromptQuality(apiKey: string, finalPrompt: string, model: string = "auto"): Promise<PromptScoreBreakdown> {
   const prompt = `당신은 구글 Lyria 프롬프트 감리사입니다.
 제시된 프롬프트가 구글 Lyria (Lyria 3 Pro) 음악 생성 가이드라인에 얼마나 부합하는지 100점 만점으로 평가해 주세요.
 
@@ -225,12 +245,12 @@ export async function analyzePromptQuality(apiKey: string, finalPrompt: string, 
   "improvements": ["이 프롬프트에서 보완하면 Lyria 생성 품질이 극대화될 개선 제안 (한국어, 최소 2개)"]
 }`;
 
-  const jsonText = await callGemini(apiKey, prompt, model, true);
+  const jsonText = await callGemini(apiKey, prompt, getModelQueue(model, QUEUES.helper), true);
   return JSON.parse(jsonText.trim()) as PromptScoreBreakdown;
 }
 
 // 4. Prompt Doctor
-export async function runPromptDoctor(apiKey: string, rawPrompt: string, model: string = "gemini-3.5-flash"): Promise<DoctorAnalysisResult> {
+export async function runPromptDoctor(apiKey: string, rawPrompt: string, model: string = "auto"): Promise<DoctorAnalysisResult> {
   const prompt = `당신은 프롬프트 닥터(Prompt Doctor)입니다.
 사용자가 작성한 기존 음악 프롬프트를 분석하여 구글 Lyria 규격 관점에서 무엇이 부족하고 비어있는지 진단하고, 고품질의 구글 Lyria 최적화 프롬프트로 고쳐주세요.
 
@@ -244,12 +264,12 @@ export async function runPromptDoctor(apiKey: string, rawPrompt: string, model: 
   "improvedPrompt": "누락된 요소를 자연스럽게 채워 넣어 구글 Lyria 표준 프레임워크 규격으로 확장한 최종 영문 프롬프트"
 }`;
 
-  const jsonText = await callGemini(apiKey, prompt, model, true);
+  const jsonText = await callGemini(apiKey, prompt, getModelQueue(model, QUEUES.prompt), true);
   return JSON.parse(jsonText.trim()) as DoctorAnalysisResult;
 }
 
 // 5. Style Converter
-export async function convertStyle(apiKey: string, styleKeyword: string, model: string = "gemini-3.5-flash"): Promise<StyleConversionResult> {
+export async function convertStyle(apiKey: string, styleKeyword: string, model: string = "auto"): Promise<StyleConversionResult> {
   const prompt = `당신은 음악 스타일 변환기(Style Converter)입니다.
 사용자가 입력한 유명 아티스트의 이름이나 특정 곡의 느낌(Vibe) 키워드를 분석하여, 구글 Lyria가 가장 잘 이해할 수 있는 구체적인 장르 및 음악적 장치(악기, 보컬, 속도감)로 변환해 주세요.
 
@@ -264,7 +284,7 @@ export async function convertStyle(apiKey: string, styleKeyword: string, model: 
   "tempoFeel": "템포 및 리듬 스타일 (영어, 예: 'mid-tempo, relaxed 110 BPM groove')"
 }`;
 
-  const jsonText = await callGemini(apiKey, prompt, model, true);
+  const jsonText = await callGemini(apiKey, prompt, getModelQueue(model, QUEUES.helper), true);
   return JSON.parse(jsonText.trim()) as StyleConversionResult;
 }
 
@@ -309,7 +329,7 @@ export async function generatePlaylist(
   apiKey: string,
   concept: string,
   flowOption: string,
-  model: string = "gemini-3.5-flash"
+  model: string = "auto"
 ): Promise<PlaylistResult> {
   const prompt = `당신은 세계 최고의 음악 감독이자 비주얼 프롬프트 디자이너, 다국어 영상 콘텐츠 프로듀서입니다.
 사용자가 입력한 플레이리스트 대주제와 곡 흐름 전략을 바탕으로 총 10곡으로 구성된 프리미엄 음악 플레이리스트와 각 트랙별 사운드/이미지/동영상 프롬프트 및 다국어 자막을 생성해 주세요.
@@ -382,7 +402,7 @@ export async function generatePlaylist(
   ]
 }`;
 
-  const jsonText = await callGemini(apiKey, prompt, model, true);
+  const jsonText = await callGemini(apiKey, prompt, getModelQueue(model, QUEUES.playlist), true);
   return JSON.parse(jsonText.trim()) as PlaylistResult;
 }
 
@@ -397,7 +417,7 @@ export async function regenerateSingleTrack(
     previousTrack?: { title: string; musicPrompt: string; description: string };
     nextTrack?: { title: string; musicPrompt: string; description: string };
   },
-  model: string = "gemini-3.5-flash"
+  model: string = "auto"
 ): Promise<PlaylistTrack> {
   const prevContext = params.previousTrack
     ? `- 이전 트랙 (#${params.trackNumber - 1}): 제목: "${params.previousTrack.title}", 음악 프롬프트: "${params.previousTrack.musicPrompt}", 설명: "${params.previousTrack.description}"`
@@ -473,7 +493,7 @@ ${nextContext}
   ]
 }`;
 
-  const jsonText = await callGemini(apiKey, prompt, model, true);
+  const jsonText = await callGemini(apiKey, prompt, getModelQueue(model, QUEUES.playlist), true);
   return JSON.parse(jsonText.trim()) as PlaylistTrack;
 }
 

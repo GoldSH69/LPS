@@ -192,7 +192,7 @@ interface HistoryItem {
 export default function Home() {
   // App States
   const [apiKey, setApiKey] = useState<string>("");
-  const [selectedModel, setSelectedModel] = useState<string>("gemini-3.5-flash");
+  const [selectedModel, setSelectedModel] = useState<string>("auto");
   const [activeTab, setActiveTab] = useState<"builder" | "doctor" | "converter" | "playlist" | "history">("builder");
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [showApiKeyWarning, setShowApiKeyWarning] = useState<boolean>(false);
@@ -259,7 +259,7 @@ export default function Home() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedKey = localStorage.getItem("lps_gemini_api_key") || "";
-      const savedModel = localStorage.getItem("lps_gemini_model") || "gemini-3.5-flash";
+      const savedModel = localStorage.getItem("lps_gemini_model") || "auto";
       const savedHistory = localStorage.getItem("lps_history") || "[]";
       setApiKey(savedKey);
       setSelectedModel(savedModel);
@@ -767,6 +767,7 @@ export default function Home() {
               }}
               className="bg-transparent font-medium text-[var(--color-point)] focus:outline-none cursor-pointer"
             >
+              <option value="auto">Auto (자동 최적화)</option>
               <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
               <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
               <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
@@ -2354,7 +2355,8 @@ export default function Home() {
                   defaultValue={selectedModel}
                   className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus-ring cursor-pointer"
                 >
-                  <option value="gemini-3.5-flash">Gemini 3.5 Flash (가장 빠름 - 기본 권장)</option>
+                  <option value="auto">Auto (작업별 모델 자동 최적화 - 권장)</option>
+                  <option value="gemini-3.5-flash">Gemini 3.5 Flash (초고속)</option>
                   <option value="gemini-2.5-flash">Gemini 2.5 Flash (안정적)</option>
                   <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (경량)</option>
                   <option value="gemini-2.5-pro">Gemini 2.5 Pro (더 정밀함)</option>
