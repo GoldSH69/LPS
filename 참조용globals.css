@@ -1,0 +1,387 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-pretendard), system-ui, sans-serif;
+}
+
+/* ========================
+  저녁(다크) + 아침(라이트) 2026.05.09
+======================== */
+:root,
+[data-theme="morning"] {
+  --color-bg: #F9F8F6; /*#F6F1E8;*/
+  --color-bg-secondary: #F1F0EE;  /*#EFE7DA; */
+  --color-card: #FFFDF9;
+  --color-point: #8B6B3D;
+  --color-text: #1F2933;
+  --color-sub: #2b2621; /*5B5248*/
+  --color-sub-point: #B08952;
+  --color-border: #ebd7bb;   /*ceb695*/
+  --color-shadow: rgba(0, 0, 0, 0.06);
+  --color-scrollbar-thumb: rgba(0, 0, 0, 0.18);
+  --color-scrollbar-thumb-hover: rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="evening"] {
+  --color-bg: #0F1722;
+  --color-bg-secondary: #161F2C;
+  --color-card: #1E2937;
+  --color-point: #D9A441;
+  --color-text: #F5E9D2;
+  --color-sub: #CDBFA8;
+  --color-sub-point: #E0B15C;  
+  --color-border: #2A3442;
+  --color-shadow: rgba(0, 0, 0, 0.35);
+  --color-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --color-scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
+}
+
+/* 제미나이 화이트 괜찮은데? */
+/*
+[data-theme="morning"] {
+  --color-bg: #F9F8F6; 
+  --color-bg-secondary: #F1F0EE; 
+  --color-card: #FFFFFF; 
+  --color-point: #5F4B32; 
+  --color-text: #1C1917; 
+  --color-sub: #78716C; 
+  --color-sub-point: #8B5E3C;
+}
+*/
+body {
+  font-size: 17px;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+  transition: background-color 0.35s ease, color 0.35s ease;
+  /* transition: background-color 0.3s, color 0.3s; */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========================
+   링크 기본
+======================== */
+a {
+  color: var(--color-point);
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+a:hover {
+  opacity: 0.8;
+}
+
+/* ========================
+   텍스트 선택 영역
+======================== */
+::selection {
+  background-color: var(--color-point);
+  color: var(--color-bg);
+}
+
+/* ========================
+   스크롤바 (웹킷)
+======================== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-thumb-hover);
+}
+
+/* ========================
+   버튼 기본 리셋
+======================== */
+button {
+  cursor: pointer;
+  border: none;
+  /*
+  background: none;
+  font: inherit;
+  color: inherit;*/
+}
+
+/* ========================
+   이미지 기본
+======================== */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ========================
+   MDX 본문 타이포그래피
+======================== */
+.mdx-content h2 {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mdx-content h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.mdx-content p {
+  font-size: 1rem;
+  line-height: 1.8;
+  color: var(--color-sub);
+  margin-bottom: 1.25rem;
+}
+
+.mdx-content ul,
+.mdx-content ol {
+  margin-bottom: 1.25rem;
+  padding-left: 1.5rem;
+  color: var(--color-sub);
+}
+
+.mdx-content ul {
+  list-style-type: disc;
+}
+
+.mdx-content ol {
+  list-style-type: decimal;
+}
+
+.mdx-content li {
+  line-height: 1.8;
+  margin-bottom: 0.375rem;
+}
+
+.mdx-content blockquote {
+  border-left: 4px solid var(--color-point);
+  padding: 0.875rem 1.25rem;
+  margin: 1.75rem 0;
+  background-color: var(--color-bg-secondary);
+  border-radius: 0 8px 8px 0;
+  color: var(--color-text);
+}
+
+.mdx-content blockquote p {
+  color: inherit;
+  font-style: normal;
+  margin-bottom: 0.5rem;
+  line-height: 1.75;
+}
+
+.mdx-content blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.mdx-content code {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-point);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: var(--font-sans);
+}
+
+.mdx-content pre {
+  background-color: var(--color-bg-secondary);
+  padding: 1.25rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+}
+
+.mdx-content pre code {
+  background: none;
+  padding: 0;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-family: var(--font-sans);
+}
+
+.mdx-content a {
+  color: var(--color-point);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mdx-content a:hover {
+  opacity: 0.8;
+}
+
+.mdx-content hr {
+  border: none;
+  border-top: 1px solid var(--color-bg-secondary);
+  margin: 2rem 0;
+}
+
+/* ========================
+   MDX 테이블
+======================== */
+.mdx-content table {
+  width: 100%;
+  table-layout: auto;          /* ← 추가 */
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  /* 표 전체 하단에 선 추가 */
+  border-bottom: 2px solid var(--color-border);
+}
+
+/* 2. 제목(h1, h2, h3) 아래 보더가 있다면 간격 조정 */
+.mdx-content h1, .mdx-content h2, .mdx-content h3 {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem; /* 보더와 표 사이의 공간 */
+}
+
+.mdx-content thead {
+  /* 배경색을 살짝 넣어 제목 보더와 시각적으로 분리 */
+  background-color: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mdx-content th {
+  color: var(--color-text);
+  font-weight: 700;
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  white-space: nowrap;
+}
+
+.mdx-content td {
+  color: var(--color-sub);
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-bg-secondary);
+  word-break: keep-all;        /* ← 추가: 한글 단어 단위 줄바꿈 */
+}
+
+.mdx-content tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.mdx-content tbody tr:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+/* 모바일 테이블 가로 스크롤 */
+.mdx-content .table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1.5rem;
+}
+
+.mdx-content strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+
+/* 추가 */
+/* =========================================
+   Card
+========================================= */
+
+.card {
+  background: var(--color-card);
+
+  border: 1px solid var(--color-border);
+
+  border-radius: 22px;
+
+  box-shadow:
+    0 10px 30px var(--color-shadow);
+
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+
+  border-color: var(--color-point);
+
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.28);
+}
+
+/* =========================================
+   Text
+========================================= */
+
+.text-main {
+  color: var(--color-text);
+}
+
+.text-sub {
+  color: var(--color-sub);
+}
+
+/* =========================================
+   Link / Point
+========================================= */
+
+a,
+.point {
+  color: var(--color-point);
+
+  transition:
+    color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+a:hover,
+.point:hover {
+  color: var(--color-sub-point);
+
+  opacity: 0.95;
+}
+
+/* =========================================
+   Divider
+========================================= */
+
+hr {
+  border: none;
+
+  border-top:
+    1px solid var(--color-border);
+
+  opacity: 0.7;
+}
+
+/* =========================================
+   Selection
+========================================= */
+
+::selection {
+  background: var(--color-point);
+  color: #111827;
+}
+
+
+
+@media (max-width: 768px) {
+  html {
+    font-size: 17px;
+  }
+}

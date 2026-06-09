@@ -40,6 +40,31 @@ import {
   PlaylistResult
 } from "./lib/gemini-api";
 
+// Helper function to render basic markdown bold syntax (**text**) and line breaks in React
+const renderMarkdownText = (text: string) => {
+  if (!text) return null;
+  const lines = text.split("\n");
+  return lines.map((line, lineIdx) => {
+    const parts = line.split(/\*\*([^*]+)\*\*/g);
+    const renderedLine = parts.map((part, partIdx) => {
+      if (partIdx % 2 === 1) {
+        return (
+          <strong key={partIdx} className="font-extrabold text-[var(--color-text)]">
+            {part}
+          </strong>
+        );
+      }
+      return part;
+    });
+    return (
+      <React.Fragment key={lineIdx}>
+        {renderedLine}
+        {lineIdx < lines.length - 1 && <br />}
+      </React.Fragment>
+    );
+  });
+};
+
 // 3-level explanations for the Beginner Learning System
 interface OptionDetail {
   title: string;
@@ -839,7 +864,7 @@ export default function Home() {
             <Search size={14} />
             MY HISTORY
             {history.length > 0 && (
-              <span className="bg-[var(--color-bg-secondary)] text-[var(--color-point)] border border-[var(--color-border)] text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+              <span className="bg-[var(--color-bg-secondary)] text-[var(--color-point)] border border-[var(--color-border)] text-xs font-bold px-1.5 py-0.2 rounded-full">
                 {history.length}
               </span>
             )}
@@ -859,7 +884,7 @@ export default function Home() {
                     <Sparkles size={16} className="text-[var(--color-point)]" />
                     AI 아이디어 분석기
                   </h2>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--color-bg-secondary)] text-[var(--color-point)] font-semibold">자동화</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-[var(--color-bg-secondary)] text-[var(--color-point)] font-semibold">자동화</span>
                 </div>
                 <p className="text-sm text-[var(--color-sub)] mb-3">
                   떠오르는 이미지, 감정, 상황을 한 문장으로 편하게 적어보세요.<br />AI가 장르, 분위기, 템포, 악기를 자동 추천합니다.
@@ -905,7 +930,7 @@ export default function Home() {
                           {value.genre} / {value.bpm} BPM
                         </span>
                       </div>
-                      <span className="text-[10px] font-bold text-[var(--color-point)] opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-xs font-bold text-[var(--color-point)] opacity-0 group-hover:opacity-100 transition-opacity">
                         불러오기 &rarr;
                       </span>
                     </button>
@@ -935,10 +960,10 @@ export default function Home() {
                     <div className="h-full w-[1px] bg-slate-200"></div>
                   </div>
 
-                  <span className="absolute top-2 left-2 text-[9px] font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">격렬함 (High Energy)</span>
-                  <span className="absolute top-2 right-2 text-[9px] font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">활기참 (Happy/Bright)</span>
-                  <span className="absolute bottom-2 left-2 text-[9px] font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">우울함 (Sad/Melancholy)</span>
-                  <span className="absolute bottom-2 right-2 text-[9px] font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">차분함 (Calm/Peaceful)</span>
+                  <span className="absolute top-2 left-2 text-xs font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">격렬함 (High Energy)</span>
+                  <span className="absolute top-2 right-2 text-xs font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">활기참 (Happy/Bright)</span>
+                  <span className="absolute bottom-2 left-2 text-xs font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">우울함 (Sad/Melancholy)</span>
+                  <span className="absolute bottom-2 right-2 text-xs font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">차분함 (Calm/Peaceful)</span>
 
                   <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-rose-500/5 pointer-events-none"></div>
                   <div className="absolute top-0 left-0 w-1/2 h-1/2 bg-amber-500/5 pointer-events-none"></div>
@@ -1069,7 +1094,7 @@ export default function Home() {
                         <button
                           key={inst}
                           onClick={() => toggleInstrument(inst)}
-                          className={`text-[10px] px-2.5 py-1 rounded-full border transition-all cursor-pointer ${
+                          className={`text-xs px-2.5 py-1 rounded-full border transition-all cursor-pointer ${
                             selected
                               ? "bg-[var(--color-point)] text-white border-[var(--color-point)] shadow-sm"
                               : "bg-white text-slate-500 border-[var(--color-border)] hover:border-slate-300"
@@ -1094,7 +1119,7 @@ export default function Home() {
                       }
                     }
                   }}
-                  className="w-full mt-1 p-2 text-[10px] bg-[var(--color-card)] border border-[var(--color-border)] border-dashed rounded-lg focus-ring placeholder-slate-400"
+                  className="w-full mt-1 p-2 text-xs bg-[var(--color-card)] border border-[var(--color-border)] border-dashed rounded-lg focus-ring placeholder-slate-400"
                 />
               </div>
 
@@ -1215,17 +1240,17 @@ export default function Home() {
 
                   <div className="flex flex-col gap-2.5">
                     <div>
-                      <span className="text-[10px] font-bold text-[var(--color-point)] bg-[var(--color-bg-secondary)] px-1.5 py-0.2 rounded block w-fit mb-0.5">🎓 전문 이론 설명</span>
+                      <span className="text-xs font-bold text-[var(--color-point)] bg-[var(--color-bg-secondary)] px-1.5 py-0.2 rounded block w-fit mb-0.5">🎓 전문 이론 설명</span>
                       <p className="text-sm text-[var(--color-text)] leading-relaxed font-medium">{OPTION_DETAILS[activeTooltip].technical}</p>
                     </div>
 
                     <div>
-                      <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.2 rounded block w-fit mb-0.5">🌱 초보자용 비유 설명</span>
+                      <span className="text-xs font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.2 rounded block w-fit mb-0.5">🌱 초보자용 비유 설명</span>
                       <p className="text-sm text-[var(--color-text)] leading-relaxed font-semibold">{OPTION_DETAILS[activeTooltip].beginner}</p>
                     </div>
 
                     <div>
-                      <span className="text-[10px] font-bold text-amber-500 bg-amber-50 px-1.5 py-0.2 rounded block w-fit mb-0.5">🎧 소리/상황 직관 느낌</span>
+                      <span className="text-xs font-bold text-amber-500 bg-amber-50 px-1.5 py-0.2 rounded block w-fit mb-0.5">🎧 소리/상황 직관 느낌</span>
                       <p className="text-sm text-[var(--color-sub)] leading-relaxed italic font-medium">{OPTION_DETAILS[activeTooltip].feel}</p>
                     </div>
                   </div>
@@ -1248,19 +1273,19 @@ export default function Home() {
                       {aiReasons.genre && (
                         <div className="text-xs">
                           <span className="font-bold text-[var(--color-text)]">장르 추천: </span>
-                          <span className="text-[var(--color-text)]">{aiReasons.genre}</span>
+                          <span className="text-[var(--color-text)]">{renderMarkdownText(aiReasons.genre)}</span>
                         </div>
                       )}
                       {aiReasons.bpm && (
                         <div className="text-xs">
                           <span className="font-bold text-[var(--color-text)]">속도 추천: </span>
-                          <span className="text-[var(--color-text)]">{aiReasons.bpm}</span>
+                          <span className="text-[var(--color-text)]">{renderMarkdownText(aiReasons.bpm)}</span>
                         </div>
                       )}
                       {aiReasons.instruments && (
                         <div className="text-xs">
                           <span className="font-bold text-[var(--color-text)]">악기 추천: </span>
-                          <span className="text-[var(--color-text)]">{aiReasons.instruments}</span>
+                          <span className="text-[var(--color-text)]">{renderMarkdownText(aiReasons.instruments)}</span>
                         </div>
                       )}
                     </div>
@@ -1271,7 +1296,7 @@ export default function Home() {
                       <span className="text-xs text-[var(--color-sub)]/70 font-bold">추천 어울리는 조건:</span>
                       <div className="flex flex-wrap gap-1.5">
                         {useCases.map((useCase, idx) => (
-                          <span key={idx} className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md font-semibold border border-emerald-100">
+                          <span key={idx} className="text-xs px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md font-semibold border border-emerald-100">
                             ✓ {useCase}
                           </span>
                         ))}
@@ -1291,7 +1316,7 @@ export default function Home() {
                   {finalPrompt && (
                     <button
                       onClick={() => copyToClipboard(finalPrompt, setCopied)}
-                      className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-[10px] font-semibold cursor-pointer"
+                      className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-xs font-semibold cursor-pointer"
                     >
                       {copied ? (
                         <>
@@ -1308,7 +1333,7 @@ export default function Home() {
                   )}
                 </div>
 
-                <div className="min-h-24 p-3 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg text-xs font-mono text-[var(--color-text)] select-all overflow-y-auto max-h-48 leading-relaxed whitespace-pre-wrap">
+                <div className="min-h-24 p-3 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text)] select-all overflow-y-auto max-h-48 leading-relaxed whitespace-pre-wrap">
                   {finalPrompt || (
                     <span className="text-[var(--color-sub)]/70 italic">왼쪽에서 옵션을 조정하고 아래 &apos;프롬프트 생성&apos; 버튼을 누르시면 여기에 완성된 구글 Lyria 규격의 영어 프롬프트가 표시됩니다.</span>
                   )}
@@ -1335,7 +1360,7 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-[10px] text-[var(--color-sub)]">
+                  <div className="grid grid-cols-2 gap-2 text-xs text-[var(--color-sub)]">
                     <div className="flex justify-between p-1 border-b border-slate-50">
                       <span>장르 명확성:</span>
                       <span className="font-bold text-[var(--color-text)]">{promptScore.genre}/10</span>
@@ -1462,13 +1487,13 @@ export default function Home() {
                     <Info size={14} />
                     진단 및 분석 리포트
                   </h3>
-                  <p className="text-sm text-[var(--color-text)] leading-relaxed">{doctorCritique}</p>
+                  <p className="text-sm text-[var(--color-text)] leading-relaxed">{renderMarkdownText(doctorCritique)}</p>
 
                   {doctorMissing.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-1">
                       <span className="text-xs font-bold text-[var(--color-sub)]/70 self-center">누락된 리리아 규칙:</span>
                       {doctorMissing.map((m, idx) => (
-                        <span key={idx} className="text-[10px] px-2 py-0.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-md font-semibold">
+                        <span key={idx} className="text-xs px-2 py-0.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-md font-semibold">
                           ✗ {m}
                         </span>
                       ))}
@@ -1481,7 +1506,7 @@ export default function Home() {
                     <h3 className="text-xs font-bold text-[var(--color-text)]">치료 및 개선된 최종 프롬프트 (Improved Prompt)</h3>
                     <button
                       onClick={() => copyToClipboard(doctorImproved, setDoctorCopied)}
-                      className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-[10px] font-semibold cursor-pointer"
+                      className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-xs font-semibold cursor-pointer"
                     >
                       {doctorCopied ? (
                         <>
@@ -1496,7 +1521,7 @@ export default function Home() {
                       )}
                     </button>
                   </div>
-                  <div className="p-3 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg text-xs font-mono text-[var(--color-text)] select-all leading-relaxed whitespace-pre-wrap">
+                  <div className="p-3 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text)] select-all leading-relaxed whitespace-pre-wrap">
                     {doctorImproved}
                   </div>
                 </div>
@@ -1565,7 +1590,7 @@ export default function Home() {
                     <span className="text-xs font-bold text-[var(--color-point)]">핵심 시그니처 사운드 (Signature Sound)</span>
                     <div className="flex flex-wrap gap-1.5 mt-0.5">
                       {converterResult.instruments.map((inst, idx) => (
-                        <span key={idx} className="text-[10px] px-2 py-0.5 bg-white border border-[var(--color-border)] text-[var(--color-point)] rounded font-semibold">
+                        <span key={idx} className="text-xs px-2 py-0.5 bg-white border border-[var(--color-border)] text-[var(--color-point)] rounded font-semibold">
                           {inst}
                         </span>
                       ))}
@@ -1586,7 +1611,7 @@ export default function Home() {
                       <h3 className="text-xs font-bold text-[var(--color-text)]">조립 완료된 구글 Lyria 음악 프롬프트</h3>
                       <button
                         onClick={() => copyToClipboard(converterPrompt, setConverterCopied)}
-                        className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-[10px] font-semibold cursor-pointer"
+                        className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-xs font-semibold cursor-pointer"
                       >
                         {converterCopied ? (
                           <>
@@ -1601,7 +1626,7 @@ export default function Home() {
                         )}
                       </button>
                     </div>
-                    <div className="p-3 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg text-xs font-mono text-[var(--color-text)] select-all leading-relaxed whitespace-pre-wrap">
+                    <div className="p-3 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text)] select-all leading-relaxed whitespace-pre-wrap">
                       {converterPrompt}
                     </div>
                   </div>
@@ -1687,9 +1712,9 @@ export default function Home() {
                   </h3>
                   <div className="text-sm text-[var(--color-text)] leading-relaxed border-t border-[var(--color-border)]/50 pt-3 flex flex-col gap-2">
                     <p className="font-semibold text-[var(--color-point)]">기획 콘셉트:</p>
-                    <p className="text-[var(--color-sub)] bg-[var(--color-bg-secondary)]/30 p-2.5 rounded border border-[var(--color-border)]/30">{playlistResult.overallConcept}</p>
+                    <p className="text-[var(--color-sub)] bg-[var(--color-bg-secondary)]/30 p-2.5 rounded border border-[var(--color-border)]/30">{renderMarkdownText(playlistResult.overallConcept)}</p>
                     <p className="font-semibold text-[var(--color-point)] mt-2">흐름 배치 전략 및 수록 근거:</p>
-                    <p className="text-[var(--color-sub)] whitespace-pre-wrap">{playlistResult.flowStrategy}</p>
+                    <p className="text-[var(--color-sub)] whitespace-pre-wrap">{renderMarkdownText(playlistResult.flowStrategy)}</p>
                   </div>
 
                   <div className="flex gap-2 justify-end mt-2 pt-2 border-t border-[var(--color-border)]/35">
@@ -1717,7 +1742,7 @@ export default function Home() {
                       <span className="text-xs font-bold text-[var(--color-point)] bg-[var(--color-bg-secondary)] px-2 py-0.5 rounded border border-[var(--color-border)]/50 flex items-center gap-1">
                         📺 YouTube Publishing Board (유튜브 업로드 메타데이터)
                       </span>
-                      <span className="text-[10px] text-[var(--color-sub)] font-medium">유튜브 업로드 시 복사해서 사용하세요</span>
+                      <span className="text-xs text-[var(--color-sub)] font-medium">유튜브 업로드 시 복사해서 사용하세요</span>
                     </div>
 
                     <div className="flex flex-col gap-4">
@@ -1770,7 +1795,7 @@ export default function Home() {
                               }
                             });
                           }}
-                          className="p-2.5 text-xs bg-[var(--color-bg-secondary)]/30 border border-[var(--color-border)] rounded-lg text-[var(--color-sub)] focus-ring h-40 font-mono resize-none leading-relaxed"
+                          className="p-2.5 text-xs bg-[var(--color-bg-secondary)]/30 border border-[var(--color-border)] rounded-lg text-[var(--color-sub)] focus-ring h-40 resize-none leading-relaxed"
                         />
                       </div>
 
@@ -1782,14 +1807,14 @@ export default function Home() {
                             <label className="text-xs font-bold text-[var(--color-point)]">추천 해시태그 (#Hashtags)</label>
                             <button
                               onClick={() => copyToClipboard(playlistResult.youtubeMetadata.hashtags.join(" "), setCopied)}
-                              className="text-[10px] text-[var(--color-point)] hover:underline cursor-pointer flex items-center gap-1 font-bold"
+                              className="text-xs text-[var(--color-point)] hover:underline cursor-pointer flex items-center gap-1 font-bold"
                             >
                               <Copy size={10} /> 모두 복사
                             </button>
                           </div>
                           <div className="flex flex-wrap gap-1 mt-1">
                             {playlistResult.youtubeMetadata.hashtags.map((tag, idx) => (
-                              <span key={idx} className="text-[11px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                              <span key={idx} className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
                                 {tag}
                               </span>
                             ))}
@@ -1802,14 +1827,14 @@ export default function Home() {
                             <label className="text-xs font-bold text-[var(--color-point)]">태그 / 검색 키워드 (Tags)</label>
                             <button
                               onClick={() => copyToClipboard(playlistResult.youtubeMetadata.tags.join(", "), setCopied)}
-                              className="text-[10px] text-[var(--color-point)] hover:underline cursor-pointer flex items-center gap-1 font-bold"
+                              className="text-xs text-[var(--color-point)] hover:underline cursor-pointer flex items-center gap-1 font-bold"
                             >
                               <Copy size={10} /> 모두 복사
                             </button>
                           </div>
                           <div className="flex flex-wrap gap-1 mt-1">
                             {playlistResult.youtubeMetadata.tags.map((tag, idx) => (
-                              <span key={idx} className="text-[10px] font-medium text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                              <span key={idx} className="text-xs font-medium text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
                                 {tag}
                               </span>
                             ))}
@@ -1866,7 +1891,7 @@ export default function Home() {
                             {/* Title & Description Fields (Editable in state) */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div className="flex flex-col gap-1">
-                                <label className="text-[11px] font-bold text-[var(--color-point)]">곡 영문 제목 (Title)</label>
+                                <label className="text-xs font-bold text-[var(--color-point)]">곡 영문 제목 (Title)</label>
                                 <input
                                   type="text"
                                   value={track.title}
@@ -1879,7 +1904,7 @@ export default function Home() {
                                 />
                               </div>
                               <div className="flex flex-col gap-1">
-                                <label className="text-[11px] font-bold text-[var(--color-point)]">곡 한글 설명 (Description)</label>
+                                <label className="text-xs font-bold text-[var(--color-point)]">곡 한글 설명 (Description)</label>
                                 <input
                                   type="text"
                                   value={track.description}
@@ -1903,11 +1928,11 @@ export default function Home() {
 
                                 {/* Lyria Prompt */}
                                 <div className="flex flex-col gap-1">
-                                  <label className="text-[10px] font-bold text-[var(--color-sub)]/80 flex items-center justify-between">
+                                  <label className="text-xs font-bold text-[var(--color-sub)]/80 flex items-center justify-between">
                                     <span>Google Lyria 음악 생성 프롬프트</span>
                                     <button
                                       onClick={() => copyToClipboard(track.musicPrompt, setCopied)}
-                                      className="text-[9px] text-[var(--color-point)] hover:underline cursor-pointer"
+                                      className="text-xs text-[var(--color-point)] hover:underline cursor-pointer"
                                     >
                                       복사
                                     </button>
@@ -1919,17 +1944,17 @@ export default function Home() {
                                       updatedTracks[index].musicPrompt = e.target.value;
                                       setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
                                     }}
-                                    className="p-2 text-xs bg-[var(--color-bg-secondary)]/50 border border-[var(--color-border)] rounded focus-ring h-20 font-mono resize-none leading-relaxed"
+                                    className="p-2 text-xs bg-[var(--color-bg-secondary)]/50 border border-[var(--color-border)] rounded focus-ring h-20 resize-none leading-relaxed"
                                   />
                                 </div>
 
                                 {/* Imagen 2 Prompt */}
                                 <div className="flex flex-col gap-1">
-                                  <label className="text-[10px] font-bold text-[var(--color-sub)]/80 flex items-center justify-between">
+                                  <label className="text-xs font-bold text-[var(--color-sub)]/80 flex items-center justify-between">
                                     <span>Google Imagen 2 이미지/썸네일 프롬프트</span>
                                     <button
                                       onClick={() => copyToClipboard(track.imagePrompt, setCopied)}
-                                      className="text-[9px] text-[var(--color-point)] hover:underline cursor-pointer"
+                                      className="text-xs text-[var(--color-point)] hover:underline cursor-pointer"
                                     >
                                       복사
                                     </button>
@@ -1941,17 +1966,17 @@ export default function Home() {
                                       updatedTracks[index].imagePrompt = e.target.value;
                                       setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
                                     }}
-                                    className="p-2 text-xs bg-[var(--color-bg-secondary)]/50 border border-[var(--color-border)] rounded focus-ring h-16 font-mono resize-none leading-relaxed"
+                                    className="p-2 text-xs bg-[var(--color-bg-secondary)]/50 border border-[var(--color-border)] rounded focus-ring h-16 resize-none leading-relaxed"
                                   />
                                 </div>
 
                                 {/* Veo 3 Prompt */}
                                 <div className="flex flex-col gap-1">
-                                  <label className="text-[10px] font-bold text-[var(--color-sub)]/80 flex items-center justify-between">
+                                  <label className="text-xs font-bold text-[var(--color-sub)]/80 flex items-center justify-between">
                                     <span>Google Veo 3 루프 동영상 프롬프트</span>
                                     <button
                                       onClick={() => copyToClipboard(track.videoPrompt, setCopied)}
-                                      className="text-[9px] text-[var(--color-point)] hover:underline cursor-pointer"
+                                      className="text-xs text-[var(--color-point)] hover:underline cursor-pointer"
                                     >
                                       복사
                                     </button>
@@ -1963,7 +1988,7 @@ export default function Home() {
                                       updatedTracks[index].videoPrompt = e.target.value;
                                       setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
                                     }}
-                                    className="p-2 text-xs bg-[var(--color-bg-secondary)]/50 border border-[var(--color-border)] rounded focus-ring h-16 font-mono resize-none leading-relaxed"
+                                    className="p-2 text-xs bg-[var(--color-bg-secondary)]/50 border border-[var(--color-border)] rounded focus-ring h-16 resize-none leading-relaxed"
                                   />
                                 </div>
                               </div>
@@ -1976,7 +2001,7 @@ export default function Home() {
 
                                 {/* Thumbnail Caption */}
                                 <div className="flex flex-col gap-1.5 p-2.5 bg-[var(--color-bg-secondary)]/40 rounded border border-[var(--color-border)]/40">
-                                  <label className="text-[10px] font-bold text-[var(--color-point)]">썸네일 자막 (Thumbnail Caption)</label>
+                                  <label className="text-xs font-bold text-[var(--color-point)]">썸네일 자막 (Thumbnail Caption)</label>
                                   <div className="grid grid-cols-3 gap-2">
                                     <input
                                       type="text"
@@ -2019,7 +2044,7 @@ export default function Home() {
                                   {track.scenes.map((scene, sceneIdx) => (
                                     <div key={scene.sceneNumber} className="flex flex-col gap-1 p-2 bg-slate-50 border border-slate-100 rounded">
                                       <div className="flex justify-between items-center">
-                                        <span className="text-[10px] font-bold text-[var(--color-text)]">
+                                        <span className="text-xs font-bold text-[var(--color-text)]">
                                           Scene {scene.sceneNumber}: {scene.description}
                                         </span>
                                       </div>
@@ -2033,7 +2058,7 @@ export default function Home() {
                                             setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
                                           }}
                                           placeholder="KO"
-                                          className="p-1 bg-white text-[10px] border border-[var(--color-border)] rounded focus-ring"
+                                          className="p-1 bg-white text-xs border border-[var(--color-border)] rounded focus-ring"
                                         />
                                         <input
                                           type="text"
@@ -2044,7 +2069,7 @@ export default function Home() {
                                             setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
                                           }}
                                           placeholder="EN"
-                                          className="p-1 bg-white text-[10px] border border-[var(--color-border)] rounded focus-ring"
+                                          className="p-1 bg-white text-xs border border-[var(--color-border)] rounded focus-ring"
                                         />
                                         <input
                                           type="text"
@@ -2055,7 +2080,7 @@ export default function Home() {
                                             setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
                                           }}
                                           placeholder="JA"
-                                          className="p-1 bg-white text-[10px] border border-[var(--color-border)] rounded focus-ring"
+                                          className="p-1 bg-white text-xs border border-[var(--color-border)] rounded focus-ring"
                                         />
                                       </div>
                                     </div>
@@ -2155,7 +2180,7 @@ export default function Home() {
                       className="p-4 bg-[var(--color-card)] border border-[var(--color-border)]/50 hover:border-[var(--color-point)] hover:bg-[var(--color-bg-secondary)]/50 rounded-xl transition-all cursor-pointer flex flex-col md:flex-row items-start justify-between gap-4 group"
                     >
                       <div className="flex-1 flex flex-col gap-2">
-                        <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
                           <span className="font-semibold text-slate-400">{item.timestamp}</span>
                           <span className="bg-slate-100 text-slate-500 font-semibold px-2 py-0.2 rounded-md">
                             {item.params.genre || "사용자 맞춤"}
@@ -2170,7 +2195,7 @@ export default function Home() {
                           {item.idea}
                         </div>
 
-                        <p className="text-[11px] font-mono text-[var(--color-sub)] leading-normal line-clamp-2 bg-[var(--color-bg-secondary)] p-2 rounded border border-[var(--color-border)]/50">
+                        <p className="text-xs text-[var(--color-sub)] leading-normal line-clamp-2 bg-[var(--color-bg-secondary)] p-2 rounded border border-[var(--color-border)]/50">
                           {item.prompt}
                         </p>
                       </div>
@@ -2363,7 +2388,7 @@ export default function Home() {
                 </select>
               </div>
 
-              <div className="text-[10px] text-slate-400">
+              <div className="text-xs text-slate-400">
                 🔑 API Key가 없으신가요?{" "}
                 <a
                   href="https://aistudio.google.com/"

@@ -3,14 +3,14 @@
 
 @theme {
   --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --text-xs: 14px;
-  --text-sm: 16px;
-  --text-base: 18px;
-  --text-lg: 20px;
-  --text-xl: 23px;
-  --text-2xl: 28px;
-  --text-3xl: 34px;
-  --text-4xl: 42px;
+  --text-xs: 15px;
+  --text-sm: 17px;
+  --text-base: 19px;
+  --text-lg: 21px;
+  --text-xl: 24px;
+  --text-2xl: 29px;
+  --text-3xl: 36px;
+  --text-4xl: 44px;
 }
 
 :root {
