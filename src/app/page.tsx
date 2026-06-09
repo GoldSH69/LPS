@@ -19,7 +19,10 @@ import {
   Music,
   User,
   Sliders,
-  Award
+  Award,
+  Download,
+  ListMusic,
+  FileText
 } from "lucide-react";
 import {
   generateMusicIdea,
@@ -27,10 +30,14 @@ import {
   analyzePromptQuality,
   runPromptDoctor,
   convertStyle,
+  generatePlaylist,
+  regenerateSingleTrack,
   MusicAnalysisResult,
   PromptScoreBreakdown,
   DoctorAnalysisResult,
-  StyleConversionResult
+  StyleConversionResult,
+  PlaylistTrack,
+  PlaylistResult
 } from "./lib/gemini-api";
 
 // 3-level explanations for the Beginner Learning System
@@ -186,7 +193,7 @@ export default function Home() {
   // App States
   const [apiKey, setApiKey] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-flash");
-  const [activeTab, setActiveTab] = useState<"builder" | "doctor" | "converter" | "history">("builder");
+  const [activeTab, setActiveTab] = useState<"builder" | "doctor" | "converter" | "playlist" | "history">("builder");
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [showApiKeyWarning, setShowApiKeyWarning] = useState<boolean>(false);
 
@@ -230,6 +237,15 @@ export default function Home() {
   const [converterLoading, setConverterLoading] = useState<boolean>(false);
   const [converterPrompt, setConverterPrompt] = useState<string>("");
   const [converterCopied, setConverterCopied] = useState<boolean>(false);
+
+  // Playlist Generator States
+  const [playlistConcept, setPlaylistConcept] = useState<string>("");
+  const [playlistFlow, setPlaylistFlow] = useState<string>("Consistent Calm");
+  const [playlistLoading, setPlaylistLoading] = useState<boolean>(false);
+  const [playlistResult, setPlaylistResult] = useState<PlaylistResult | null>(null);
+  const [expandedTrack, setExpandedTrack] = useState<number | null>(null);
+  const [trackFeedbacks, setTrackFeedbacks] = useState<Record<number, string>>({});
+  const [trackLoadingStates, setTrackLoadingStates] = useState<Record<number, boolean>>({});
 
   // Local History State
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -332,7 +348,6 @@ export default function Home() {
     setFinalPrompt(item.prompt);
     setIdeaInput(item.idea);
     setActiveTab("builder");
-    // Trigger analyzer locally with current state
     if (apiKey) {
       setIsLoading(true);
       analyzePromptQuality(apiKey, item.prompt, selectedModel)
@@ -368,8 +383,8 @@ export default function Home() {
   // Mood Map clicking handler (Valence & Energy)
   const handleMoodMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100; // 0 to 100
-    const y = (1 - (e.clientY - rect.top) / rect.height) * 100; // 0 to 100
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = (1 - (e.clientY - rect.top) / rect.height) * 100;
 
     let recommendedGenre = "";
     let recommendedMood = "";
@@ -379,7 +394,6 @@ export default function Home() {
     let recommendedProduction = "";
 
     if (x >= 50 && y >= 50) {
-      // Quadrant 1: High Energy, High Valence (Happy, Energetic)
       recommendedGenre = "uplifting dance pop";
       recommendedMood = "energetic, bright and joyful";
       recommendedBpm = 124;
@@ -387,7 +401,6 @@ export default function Home() {
       recommendedVocal = "clear and powerful female vocals in English";
       recommendedProduction = "clean digital master, wide stereofield, crisp high-end";
     } else if (x < 50 && y >= 50) {
-      // Quadrant 2: High Energy, Low Valence (Angry, Intense, Melancholic Rock)
       recommendedGenre = "intense alternative rock / modern metal";
       recommendedMood = "dark, aggressive, powerful and suspenseful";
       recommendedBpm = 138;
@@ -395,7 +408,6 @@ export default function Home() {
       recommendedVocal = "raspy, emotive male rock vocals in Korean";
       recommendedProduction = "raw garage-style mix, heavy compression, aggressive dynamics";
     } else if (x < 50 && y < 50) {
-      // Quadrant 3: Low Energy, Low Valence (Sad, Melancholic, Soft)
       recommendedGenre = "slow cinematic ambient / sad piano ballad";
       recommendedMood = "melancholic, somber, quiet and reflective";
       recommendedBpm = 68;
@@ -403,7 +415,6 @@ export default function Home() {
       recommendedVocal = "whispery, delicate female vocal in Korean";
       recommendedProduction = "deep spacious reverb, analog tape hiss, intimate stereo width";
     } else {
-      // Quadrant 4: Low Energy, High Valence (Calm, Peaceful, Cozy)
       recommendedGenre = "cozy bossa nova / warm acoustic folk";
       recommendedMood = "chill, peaceful, relaxed and cozy";
       recommendedBpm = 85;
@@ -429,7 +440,6 @@ export default function Home() {
     setPromptScore(null);
   };
 
-  // Helper instrument toggle
   const toggleInstrument = (inst: string) => {
     if (selectedInstruments.includes(inst)) {
       setSelectedInstruments(selectedInstruments.filter((i) => i !== inst));
@@ -438,7 +448,6 @@ export default function Home() {
     }
   };
 
-  // Main flow A: AI Idea Generator
   const handleAnalyzeIdea = async () => {
     if (!apiKey) {
       setSettingsOpen(true);
@@ -469,7 +478,6 @@ export default function Home() {
     }
   };
 
-  // Main flow: Builder -> Optimize & Analyze
   const handleOptimizePrompt = async () => {
     if (!apiKey) {
       setSettingsOpen(true);
@@ -495,11 +503,9 @@ export default function Home() {
 
       setFinalPrompt(optimized);
 
-      // Instantly run quality analyzer
       const score = await analyzePromptQuality(apiKey, optimized, selectedModel);
       setPromptScore(score);
 
-      // Automatically add to history log
       addToHistory(optimized, score.total, ideaInput);
     } catch (error: any) {
       alert(error.message || "오류가 발생했습니다.");
@@ -508,7 +514,6 @@ export default function Home() {
     }
   };
 
-  // Flow C: Prompt Doctor execution
   const handleDoctorSubmit = async () => {
     if (!apiKey) {
       setSettingsOpen(true);
@@ -531,7 +536,6 @@ export default function Home() {
     }
   };
 
-  // Flow Style Converter execution
   const handleConverterSubmit = async () => {
     if (!apiKey) {
       setSettingsOpen(true);
@@ -546,7 +550,6 @@ export default function Home() {
       const result = await convertStyle(apiKey, converterKeyword, selectedModel);
       setConverterResult(result);
 
-      // Auto-generate optimized prompt description based on style conversion
       const draftPrompt = await optimizePrompt(
         apiKey,
         {
@@ -568,14 +571,129 @@ export default function Home() {
     }
   };
 
-  // Copy to Clipboard
+  // Playlist Generators Actions
+  const handleGeneratePlaylist = async () => {
+    if (!apiKey) {
+      setSettingsOpen(true);
+      return;
+    }
+    if (!playlistConcept.trim()) return;
+
+    setPlaylistLoading(true);
+    setPlaylistResult(null);
+    setExpandedTrack(null);
+    try {
+      const result = await generatePlaylist(apiKey, playlistConcept, playlistFlow, selectedModel);
+      setPlaylistResult(result);
+    } catch (error: any) {
+      alert(error.message || "플레이리스트 생성 중 오류가 발생했습니다.");
+    } finally {
+      setPlaylistLoading(false);
+    }
+  };
+
+  const handleRegenerateTrack = async (trackNum: number) => {
+    if (!apiKey || !playlistResult) return;
+    const feedback = trackFeedbacks[trackNum] || "";
+    if (!feedback.trim()) {
+      alert("해당 곡에 어떤 조정을 원하는지 피드백 내용을 입력해 주세요.");
+      return;
+    }
+
+    setTrackLoadingStates((prev) => ({ ...prev, [trackNum]: true }));
+
+    const tracks = playlistResult.tracks;
+    const currentIdx = tracks.findIndex((t) => t.trackNumber === trackNum);
+    const previousTrack = currentIdx > 0 ? tracks[currentIdx - 1] : undefined;
+    const nextTrack = currentIdx < tracks.length - 1 ? tracks[currentIdx + 1] : undefined;
+
+    try {
+      const updatedTrack = await regenerateSingleTrack(
+        apiKey,
+        {
+          playlistTitle: playlistResult.playlistTitle,
+          playlistConcept: playlistResult.overallConcept,
+          flowStrategy: playlistResult.flowStrategy,
+          trackNumber: trackNum,
+          userFeedback: feedback,
+          previousTrack,
+          nextTrack
+        },
+        selectedModel
+      );
+
+      // Merge updated track back to state
+      const updatedTracks = tracks.map((t) => (t.trackNumber === trackNum ? updatedTrack : t));
+      setPlaylistResult({
+        ...playlistResult,
+        tracks: updatedTracks
+      });
+
+      // Clear feedback text
+      setTrackFeedbacks((prev) => ({ ...prev, [trackNum]: "" }));
+      alert(`${trackNum}번 곡이 피드백을 반영하여 부분 재생성되었습니다!`);
+    } catch (error: any) {
+      alert(error.message || "곡 재생성 중 오류가 발생했습니다.");
+    } finally {
+      setTrackLoadingStates((prev) => ({ ...prev, [trackNum]: false }));
+    }
+  };
+
+  // Export Playlist (JSON)
+  const exportPlaylistJson = () => {
+    if (!playlistResult) return;
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(playlistResult, null, 2));
+    const downloadAnchor = document.createElement("a");
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `${playlistResult.playlistTitle.replace(/\s+/g, "_")}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  // Export Playlist (Markdown)
+  const exportPlaylistMarkdown = () => {
+    if (!playlistResult) return;
+    let md = `# ${playlistResult.playlistTitle}\n\n`;
+    md += `## 📋 기획 콘셉트\n${playlistResult.overallConcept}\n\n`;
+    md += `## 🎼 구성 및 흐름 전략\n${playlistResult.flowStrategy}\n\n`;
+    md += `--- \n\n## 🎵 수록곡 목록 (Total 10 Tracks)\n\n`;
+
+    playlistResult.tracks.forEach((t) => {
+      md += `### Track ${t.trackNumber}: ${t.title}\n`;
+      md += `- **곡 설명:** ${t.description}\n`;
+      md += `- **Google Lyria Prompt (음악):** \`\`\`\n${t.musicPrompt}\n\`\`\`\n`;
+      md += `- **Google Imagen 2 Prompt (이미지/아트):** \`\`\`\n${t.imagePrompt}\n\`\`\`\n`;
+      md += `- **Google Veo 3 Prompt (배경 루프 비디오):** \`\`\`\n${t.videoPrompt}\n\`\`\`\n`;
+      md += `- **썸네일 자막 (Thumbnail Captions):**\n`;
+      md += `  - **KO:** ${t.thumbnailCaption.ko}\n`;
+      md += `  - **EN:** ${t.thumbnailCaption.en}\n`;
+      md += `  - **JA:** ${t.thumbnailCaption.ja}\n\n`;
+      md += `- **각 씬별 동영상 연출 및 자막 (Scenes):**\n`;
+      t.scenes.forEach((s) => {
+        md += `  - **Scene ${s.sceneNumber} (${s.description}):**\n`;
+        md += `    - *KO:* ${s.captions.ko}\n`;
+        md += `    - *EN:* ${s.captions.en}\n`;
+        md += `    - *JA:* ${s.captions.ja}\n`;
+      });
+      md += `\n---\n\n`;
+    });
+
+    const dataStr = "data:text/markdown;charset=utf-8," + encodeURIComponent(md);
+    const downloadAnchor = document.createElement("a");
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `${playlistResult.playlistTitle.replace(/\s+/g, "_")}.md`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
   const copyToClipboard = (text: string, setCopiedFn: (val: boolean) => void) => {
     navigator.clipboard.writeText(text);
     setCopiedFn(true);
     setTimeout(() => setCopiedFn(false), 2000);
   };
 
-  // Tooltip Helper
   const toggleTooltip = (optionKey: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setActiveTooltip(activeTooltip === optionKey ? null : optionKey);
@@ -583,7 +701,6 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen pb-12 overflow-x-hidden">
-      {/* Background ambient glowing spheres */}
       <div className="ambient-glow-1"></div>
       <div className="ambient-glow-2"></div>
 
@@ -595,18 +712,18 @@ export default function Home() {
               <Sparkles size={22} className="animate-pulse" />
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-[var(--color-text)]">
-              Lyria Prompt Studio <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[var(--color-bg-secondary)] text-[var(--color-point)]">LPS</span>
+              Lyria Prompt Studio <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[var(--color-bg-secondary)] text-[var(--color-point)] border border-[var(--color-border)]">LPS</span>
             </h1>
           </div>
-          <p className="text-sm text-[var(--color-sub)] mt-1">
+          <p className="text-xs text-[var(--color-sub)] mt-1">
             생각만 입력하세요.<br />AI가 음악 프로듀서처럼 구글 Lyria 프롬프트를 빌드해 드립니다.
           </p>
         </div>
 
         {/* Global Configuration Controls */}
         <div className="flex items-center gap-3 mt-4 md:mt-0">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] text-xs text-slate-600">
-            <span className="font-semibold text-[var(--color-sub)]">Model:</span>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] text-xs text-[var(--color-sub)]">
+            <span className="font-semibold text-[var(--color-sub)]/70">Model:</span>
             <select
               value={selectedModel}
               onChange={(e) => {
@@ -626,11 +743,11 @@ export default function Home() {
             onClick={() => setSettingsOpen(true)}
             className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium border shadow-sm transition-all focus:outline-none ${
               apiKey
-                ? "bg-white text-[var(--color-text)] border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)]"
-                : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                ? "bg-[var(--color-card)] text-[var(--color-text)] border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)]"
+                : "bg-[var(--color-bg-secondary)] text-[var(--color-point)] border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)]/80"
             }`}
           >
-            <Settings size={14} className={apiKey ? "text-[var(--color-sub)]" : "text-amber-500 animate-spin-slow"} />
+            <Settings size={14} className={apiKey ? "text-[var(--color-sub)]/70" : "text-[var(--color-point)] animate-spin-slow"} />
             {apiKey ? "API 설정 완료" : "Gemini API Key 등록 필요"}
             <span className={`w-2 h-2 rounded-full ${apiKey ? "bg-emerald-500" : "bg-amber-500 animate-ping"}`}></span>
           </button>
@@ -640,44 +757,53 @@ export default function Home() {
       {/* MAIN CONTAINER */}
       <main className="max-w-7xl mx-auto px-4 md:px-8 mt-6">
         {/* Navigation Tabs bar */}
-        <div className="flex items-center gap-2 p-1 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl max-w-lg mb-8 mx-auto shadow-inner">
+        <div className="flex items-center gap-2 p-1 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl max-w-2xl mb-8 mx-auto shadow-inner">
           <button
             onClick={() => setActiveTab("builder")}
             className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === "builder" ? "bg-white text-[var(--color-point)] shadow" : "text-slate-600 hover:text-[var(--color-text)]"
+              activeTab === "builder" ? "bg-[var(--color-card)] text-[var(--color-point)] border border-[var(--color-border)] shadow-sm" : "text-[var(--color-sub)] hover:text-[var(--color-point)]"
             }`}
           >
             <Sparkles size={14} />
-            프롬프트 빌더
+            PROMPT BUILDER
           </button>
           <button
             onClick={() => setActiveTab("doctor")}
             className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === "doctor" ? "bg-white text-[var(--color-point)] shadow" : "text-slate-600 hover:text-[var(--color-text)]"
+              activeTab === "doctor" ? "bg-[var(--color-card)] text-[var(--color-point)] border border-[var(--color-border)] shadow-sm" : "text-[var(--color-sub)] hover:text-[var(--color-point)]"
             }`}
           >
             <Activity size={14} />
-            프롬프트 닥터
+            PROMPT DOCTOR
           </button>
           <button
             onClick={() => setActiveTab("converter")}
             className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === "converter" ? "bg-white text-[var(--color-point)] shadow" : "text-slate-600 hover:text-[var(--color-text)]"
+              activeTab === "converter" ? "bg-[var(--color-card)] text-[var(--color-point)] border border-[var(--color-border)] shadow-sm" : "text-[var(--color-sub)] hover:text-[var(--color-point)]"
             }`}
           >
             <Music size={14} />
-            스타일 변환기
+            STYLE CONVERTER
+          </button>
+          <button
+            onClick={() => setActiveTab("playlist")}
+            className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === "playlist" ? "bg-[var(--color-card)] text-[var(--color-point)] border border-[var(--color-border)] shadow-sm" : "text-[var(--color-sub)] hover:text-[var(--color-point)]"
+            }`}
+          >
+            <ListMusic size={14} />
+            PLAYLIST
           </button>
           <button
             onClick={() => setActiveTab("history")}
             className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === "history" ? "bg-white text-[var(--color-point)] shadow" : "text-slate-600 hover:text-[var(--color-text)]"
+              activeTab === "history" ? "bg-[var(--color-card)] text-[var(--color-point)] border border-[var(--color-border)] shadow-sm" : "text-[var(--color-sub)] hover:text-[var(--color-point)]"
             }`}
           >
             <Search size={14} />
             MY HISTORY
             {history.length > 0 && (
-              <span className="bg-[var(--color-bg-secondary)] text-[var(--color-point)] text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+              <span className="bg-[var(--color-bg-secondary)] text-[var(--color-point)] border border-[var(--color-border)] text-[10px] font-bold px-1.5 py-0.2 rounded-full">
                 {history.length}
               </span>
             )}
@@ -689,7 +815,6 @@ export default function Home() {
         {/* ========================================================================= */}
         {activeTab === "builder" && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* COLUMN 1: AI Idea Generator + Presets + Mood Map (Span 4) */}
             <div className="lg:col-span-4 flex flex-col gap-6">
               {/* Box 1: AI Idea Input */}
               <div className="glass-panel p-5 flex flex-col">
@@ -712,7 +837,7 @@ export default function Home() {
                 <button
                   onClick={handleAnalyzeIdea}
                   disabled={isLoading || !ideaInput.trim()}
-                  className="w-full mt-3 py-2.5 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-lg font-bold text-xs shadow-md shadow-[var(--color-shadow)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                  className="w-full mt-3 py-2.5 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-lg font-bold text-xs shadow-md shadow-[var(--color-shadow)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   {isLoading ? (
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
@@ -736,11 +861,11 @@ export default function Home() {
                     <button
                       key={key}
                       onClick={() => loadPreset(key as keyof typeof PRESETS)}
-                      className="w-full text-left p-2.5 bg-[var(--color-card)] border border-[var(--color-border)]/50 hover:border-[var(--color-point)] hover:bg-[var(--color-bg-secondary)] rounded-lg text-xs transition-all flex items-center justify-between group"
+                      className="w-full text-left p-2.5 bg-[var(--color-card)] border border-[var(--color-border)]/50 hover:border-[var(--color-point)] hover:bg-[var(--color-bg-secondary)] rounded-lg text-xs transition-all flex items-center justify-between group cursor-pointer"
                     >
                       <div className="flex flex-col">
                         <span className="font-bold text-[var(--color-text)] group-hover:text-[var(--color-point)]">{value.name}</span>
-                        <span className="text-xs text-[var(--color-sub)] font-medium truncate max-w-[240px]">
+                        <span className="text-xs text-[var(--color-sub)]/70 font-medium truncate max-w-[240px]">
                           {value.genre} / {value.bpm} BPM
                         </span>
                       </div>
@@ -760,32 +885,28 @@ export default function Home() {
                     무드 맵 (Mood Map)
                   </h2>
                 </div>
-                <p className="text-xs text-[var(--color-sub)] mb-3">맵의 4사분면 격자를 마우스로 클릭하면 무드가 즉각 세팅됩니다.</p>
+                <p className="text-xs text-[var(--color-sub)]/70 mb-3">맵의 4사분면 격자를 마우스로 클릭하면 무드가 즉각 세팅됩니다.</p>
 
-                {/* Mood Map Interactive Area */}
                 <div
                   onClick={handleMoodMapClick}
                   className="relative w-full h-48 border border-[var(--color-border)] rounded-lg bg-[var(--color-bg-secondary)]/50 hover:bg-[var(--color-bg-secondary)] cursor-crosshair overflow-hidden transition-colors"
                 >
-                  {/* Axis indicators */}
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="w-full h-[1px] bg-slate-200"></div>
                     <div className="h-full w-[1px] bg-slate-200"></div>
                   </div>
 
-                  {/* Corner tag labels */}
-                  <span className="absolute top-2 left-2 text-[9px] font-bold text-[var(--color-sub)]/70 bg-white/90 px-1 rounded pointer-events-none">격렬함 (High Energy)</span>
-                  <span className="absolute top-2 right-2 text-[9px] font-bold text-[var(--color-sub)]/70 bg-white/90 px-1 rounded pointer-events-none">활기참 (Happy/Bright)</span>
-                  <span className="absolute bottom-2 left-2 text-[9px] font-bold text-[var(--color-sub)]/70 bg-white/90 px-1 rounded pointer-events-none">우울함 (Sad/Melancholy)</span>
-                  <span className="absolute bottom-2 right-2 text-[9px] font-bold text-[var(--color-sub)]/70 bg-white/90 px-1 rounded pointer-events-none">차분함 (Calm/Peaceful)</span>
+                  <span className="absolute top-2 left-2 text-[9px] font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">격렬함 (High Energy)</span>
+                  <span className="absolute top-2 right-2 text-[9px] font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">활기참 (Happy/Bright)</span>
+                  <span className="absolute bottom-2 left-2 text-[9px] font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">우울함 (Sad/Melancholy)</span>
+                  <span className="absolute bottom-2 right-2 text-[9px] font-bold text-slate-400 bg-white/90 px-1 rounded pointer-events-none">차분함 (Calm/Peaceful)</span>
 
-                  {/* Gradient Background elements representing quadrants */}
                   <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-rose-500/5 pointer-events-none"></div>
                   <div className="absolute top-0 left-0 w-1/2 h-1/2 bg-amber-500/5 pointer-events-none"></div>
-                  <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-[var(--color-point)]/5 pointer-events-none"></div>
+                  <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-indigo-500/5 pointer-events-none"></div>
                   <div className="absolute bottom-0 right-0 w-1/2 h-1/2 bg-emerald-500/5 pointer-events-none"></div>
 
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-[var(--color-point)]/20 border border-indigo-500 rounded-full pointer-events-none animate-ping"></div>
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-[var(--color-point)]/20 border border-[var(--color-point)] rounded-full pointer-events-none animate-ping"></div>
                   <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-[var(--color-point)] rounded-full pointer-events-none"></div>
                 </div>
               </div>
@@ -793,22 +914,22 @@ export default function Home() {
 
             {/* COLUMN 2: Option Customization (Span 4) */}
             <div className="lg:col-span-4 glass-panel p-6 flex flex-col gap-4 relative">
-              <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]/70">
+              <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
                 <h2 className="text-sm font-bold text-[var(--color-text)] flex items-center gap-1.5">
                   <Sliders size={16} className="text-[var(--color-point)]" />
                   옵션 상세 조정
                 </h2>
-                <span className="text-xs text-[var(--color-sub)] font-semibold">초보자용 가이드 ? 아이콘 포함</span>
+                <span className="text-xs text-[var(--color-sub)]/70 font-semibold">초보자용 가이드 ? 아이콘 포함</span>
               </div>
 
               {/* Form Option 1: Genre */}
               <div className="flex flex-col gap-1 relative">
-                <label className="text-xs font-bold text-[var(--color-text)] flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   <span className="flex items-center gap-1">
                     음악 장르 (Genre)
                     <button
                       onClick={(e) => toggleTooltip("genre", e)}
-                      className="p-0.5 rounded-full hover:bg-slate-100 text-[var(--color-sub)]/70 hover:text-[var(--color-point)] transition-colors"
+                      className="p-0.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-[var(--color-point)] transition-colors cursor-pointer"
                       title="장르 설명 보기"
                     >
                       <HelpCircle size={13} />
@@ -826,12 +947,12 @@ export default function Home() {
 
               {/* Form Option 2: Mood */}
               <div className="flex flex-col gap-1 relative">
-                <label className="text-xs font-bold text-[var(--color-text)] flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   <span className="flex items-center gap-1">
                     곡 분위기 (Mood)
                     <button
                       onClick={(e) => toggleTooltip("mood", e)}
-                      className="p-0.5 rounded-full hover:bg-slate-100 text-[var(--color-sub)]/70 hover:text-[var(--color-point)] transition-colors"
+                      className="p-0.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-[var(--color-point)] transition-colors cursor-pointer"
                       title="분위기 설명 보기"
                     >
                       <HelpCircle size={13} />
@@ -849,12 +970,12 @@ export default function Home() {
 
               {/* Form Option 3: BPM */}
               <div className="flex flex-col gap-1 relative">
-                <label className="text-xs font-bold text-[var(--color-text)] flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   <span className="flex items-center gap-1">
                     템포 및 속도 (BPM: {bpm})
                     <button
                       onClick={(e) => toggleTooltip("bpm", e)}
-                      className="p-0.5 rounded-full hover:bg-slate-100 text-[var(--color-sub)]/70 hover:text-[var(--color-point)] transition-colors"
+                      className="p-0.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-[var(--color-point)] transition-colors cursor-pointer"
                       title="템포 설명 보기"
                     >
                       <HelpCircle size={13} />
@@ -868,7 +989,7 @@ export default function Home() {
                     max="180"
                     value={bpm}
                     onChange={(e) => setBpm(parseInt(e.target.value))}
-                    className="flex-1 accent-indigo-500 cursor-pointer h-1.5 bg-slate-200 rounded-lg appearance-none"
+                    className="flex-1 accent-[var(--color-point)] cursor-pointer h-1.5 bg-slate-200 rounded-lg appearance-none"
                   />
                   <input
                     type="number"
@@ -883,12 +1004,12 @@ export default function Home() {
 
               {/* Form Option 4: Instruments */}
               <div className="flex flex-col gap-1.5 relative">
-                <label className="text-xs font-bold text-[var(--color-text)] flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   <span className="flex items-center gap-1">
                     악기 구성 (Instruments)
                     <button
                       onClick={(e) => toggleTooltip("instruments", e)}
-                      className="p-0.5 rounded-full hover:bg-slate-100 text-[var(--color-sub)]/70 hover:text-[var(--color-point)] transition-colors"
+                      className="p-0.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-[var(--color-point)] transition-colors cursor-pointer"
                       title="악기 설명 보기"
                     >
                       <HelpCircle size={13} />
@@ -903,10 +1024,10 @@ export default function Home() {
                         <button
                           key={inst}
                           onClick={() => toggleInstrument(inst)}
-                          className={`text-[10px] px-2.5 py-1 rounded-full border transition-all ${
+                          className={`text-[10px] px-2.5 py-1 rounded-full border transition-all cursor-pointer ${
                             selected
-                              ? "bg-[var(--color-point)] text-white border-indigo-500 shadow-sm"
-                              : "bg-white text-[var(--color-sub)] border-[var(--color-border)] hover:border-slate-300"
+                              ? "bg-[var(--color-point)] text-white border-[var(--color-point)] shadow-sm"
+                              : "bg-white text-slate-500 border-[var(--color-border)] hover:border-slate-300"
                           }`}
                         >
                           {inst}
@@ -915,7 +1036,6 @@ export default function Home() {
                     }
                   )}
                 </div>
-                {/* Manual tag addition input */}
                 <input
                   type="text"
                   placeholder="추가 악기를 쉼표로 입력해보세요 (예: electric guitar, ambient pad)"
@@ -935,12 +1055,12 @@ export default function Home() {
 
               {/* Form Option 5: Vocals */}
               <div className="flex flex-col gap-1 relative">
-                <label className="text-xs font-bold text-[var(--color-text)] flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   <span className="flex items-center gap-1">
                     보컬 스타일 (Vocals)
                     <button
                       onClick={(e) => toggleTooltip("vocals", e)}
-                      className="p-0.5 rounded-full hover:bg-slate-100 text-[var(--color-sub)]/70 hover:text-[var(--color-point)] transition-colors"
+                      className="p-0.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-[var(--color-point)] transition-colors cursor-pointer"
                       title="보컬 설명 보기"
                     >
                       <HelpCircle size={13} />
@@ -958,12 +1078,12 @@ export default function Home() {
 
               {/* Form Option 6: Structure */}
               <div className="flex flex-col gap-1 relative">
-                <label className="text-xs font-bold text-[var(--color-text)] flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   <span className="flex items-center gap-1">
                     곡의 구조 (Structure)
                     <button
                       onClick={(e) => toggleTooltip("structure", e)}
-                      className="p-0.5 rounded-full hover:bg-slate-100 text-[var(--color-sub)]/70 hover:text-[var(--color-point)] transition-colors"
+                      className="p-0.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-[var(--color-point)] transition-colors cursor-pointer"
                       title="곡 구조 설명 보기"
                     >
                       <HelpCircle size={13} />
@@ -981,12 +1101,12 @@ export default function Home() {
 
               {/* Form Option 7: Production */}
               <div className="flex flex-col gap-1 relative">
-                <label className="text-xs font-bold text-[var(--color-text)] flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   <span className="flex items-center gap-1">
                     오디오 믹스 및 가공 (Production)
                     <button
                       onClick={(e) => toggleTooltip("production", e)}
-                      className="p-0.5 rounded-full hover:bg-slate-100 text-[var(--color-sub)]/70 hover:text-[var(--color-point)] transition-colors"
+                      className="p-0.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-[var(--color-point)] transition-colors cursor-pointer"
                       title="가공 설명 보기"
                     >
                       <HelpCircle size={13} />
@@ -1004,7 +1124,7 @@ export default function Home() {
 
               {/* Form Option 8: Lyrics */}
               <div className="flex flex-col gap-1 relative">
-                <label className="text-xs font-bold text-[var(--color-text)]">가사 본문 (선택사항 - Lyria 3 Pro용)</label>
+                <label className="text-xs font-bold text-slate-700">가사 본문 (선택사항 - Lyria 3 Pro용)</label>
                 <textarea
                   value={customLyrics}
                   onChange={(e) => setCustomLyrics(e.target.value)}
@@ -1017,7 +1137,7 @@ export default function Home() {
               <button
                 onClick={handleOptimizePrompt}
                 disabled={isLoading}
-                className="w-full mt-3 py-3 bg-gradient-to-r bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-xl font-bold text-xs shadow-md shadow-[var(--color-shadow)] transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                className="w-full mt-3 py-3 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-xl font-bold text-xs shadow-md shadow-[var(--color-shadow)] transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 {isLoading ? (
                   <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
@@ -1029,11 +1149,11 @@ export default function Home() {
                 )}
               </button>
 
-              {/* POPUP OVERLAY TOOLTIP CARD (Beginner Guide System) */}
+              {/* POPUP OVERLAY TOOLTIP CARD */}
               {activeTooltip && OPTION_DETAILS[activeTooltip] && (
                 <div
                   ref={tooltipRef}
-                  className="absolute inset-x-6 top-16 bg-white/95 border border-[var(--color-border)] rounded-xl p-5 shadow-xl shadow-[var(--color-shadow)] z-20 backdrop-blur-md animate-fade-in flex flex-col gap-3.5"
+                  className="absolute inset-x-6 top-16 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-5 shadow-xl shadow-[var(--color-shadow)] z-20 backdrop-blur-md animate-fade-in flex flex-col gap-3.5"
                 >
                   <div className="flex items-center justify-between pb-1.5 border-b border-indigo-50">
                     <span className="text-xs font-bold text-[var(--color-point)] flex items-center gap-1">
@@ -1042,7 +1162,7 @@ export default function Home() {
                     </span>
                     <button
                       onClick={() => setActiveTooltip(null)}
-                      className="text-xs font-semibold text-[var(--color-sub)]/70 hover:text-slate-600"
+                      className="text-xs font-semibold text-slate-400 hover:text-slate-600 cursor-pointer"
                     >
                       닫기
                     </button>
@@ -1050,18 +1170,18 @@ export default function Home() {
 
                   <div className="flex flex-col gap-2.5">
                     <div>
-                      <span className="text-[10px] font-bold text-indigo-400 bg-[var(--color-bg-secondary)] px-1.5 py-0.2 rounded block w-fit mb-0.5">🎓 전문 이론 설명</span>
-                      <p className="text-xs text-[var(--color-text)] leading-normal font-medium">{OPTION_DETAILS[activeTooltip].technical}</p>
+                      <span className="text-[10px] font-bold text-[var(--color-point)] bg-[var(--color-bg-secondary)] px-1.5 py-0.2 rounded block w-fit mb-0.5">🎓 전문 이론 설명</span>
+                      <p className="text-sm text-[var(--color-text)] leading-relaxed font-medium">{OPTION_DETAILS[activeTooltip].technical}</p>
                     </div>
 
                     <div>
                       <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.2 rounded block w-fit mb-0.5">🌱 초보자용 비유 설명</span>
-                      <p className="text-xs text-[var(--color-text)] leading-normal font-semibold">{OPTION_DETAILS[activeTooltip].beginner}</p>
+                      <p className="text-sm text-[var(--color-text)] leading-relaxed font-semibold">{OPTION_DETAILS[activeTooltip].beginner}</p>
                     </div>
 
                     <div>
                       <span className="text-[10px] font-bold text-amber-500 bg-amber-50 px-1.5 py-0.2 rounded block w-fit mb-0.5">🎧 소리/상황 직관 느낌</span>
-                      <p className="text-sm text-[var(--color-text)] leading-relaxed italic font-medium">{OPTION_DETAILS[activeTooltip].feel}</p>
+                      <p className="text-sm text-[var(--color-sub)] leading-relaxed italic font-medium">{OPTION_DETAILS[activeTooltip].feel}</p>
                     </div>
                   </div>
                 </div>
@@ -1078,34 +1198,32 @@ export default function Home() {
                     AI 추천 이유 및 상황
                   </h2>
 
-                  {/* Reasons list */}
-                  {Object.keys(aiReasons).length > 0 && (
+                  {aiReasons.genre && (
                     <div className="flex flex-col gap-2 border-b border-[var(--color-border)]/70 pb-3">
                       {aiReasons.genre && (
                         <div className="text-xs">
                           <span className="font-bold text-[var(--color-text)]">장르 추천: </span>
-                          <span className="text-slate-600">{aiReasons.genre}</span>
+                          <span className="text-[var(--color-text)]">{aiReasons.genre}</span>
                         </div>
                       )}
                       {aiReasons.bpm && (
                         <div className="text-xs">
                           <span className="font-bold text-[var(--color-text)]">속도 추천: </span>
-                          <span className="text-slate-600">{aiReasons.bpm}</span>
+                          <span className="text-[var(--color-text)]">{aiReasons.bpm}</span>
                         </div>
                       )}
                       {aiReasons.instruments && (
                         <div className="text-xs">
                           <span className="font-bold text-[var(--color-text)]">악기 추천: </span>
-                          <span className="text-slate-600">{aiReasons.instruments}</span>
+                          <span className="text-[var(--color-text)]">{aiReasons.instruments}</span>
                         </div>
                       )}
                     </div>
                   )}
 
-                  {/* Recommended conditions tags */}
                   {useCases.length > 0 && (
                     <div className="flex flex-col gap-1.5">
-                      <span className="text-[10px] font-bold text-[var(--color-sub)]/70">추천 어울리는 조건:</span>
+                      <span className="text-xs text-[var(--color-sub)]/70 font-bold">추천 어울리는 조건:</span>
                       <div className="flex flex-wrap gap-1.5">
                         {useCases.map((useCase, idx) => (
                           <span key={idx} className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md font-semibold border border-emerald-100">
@@ -1128,7 +1246,7 @@ export default function Home() {
                   {finalPrompt && (
                     <button
                       onClick={() => copyToClipboard(finalPrompt, setCopied)}
-                      className="p-1 rounded hover:bg-slate-100 text-[var(--color-sub)] hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-[10px] font-semibold"
+                      className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-[10px] font-semibold cursor-pointer"
                     >
                       {copied ? (
                         <>
@@ -1155,26 +1273,24 @@ export default function Home() {
               {/* Box 3: Prompt Quality Analyzer (Score card) */}
               {promptScore && (
                 <div className="glass-panel p-5 flex flex-col gap-4">
-                  <div className="flex items-center justify-between pb-1.5 border-b border-[var(--color-border)]/70">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-[var(--color-border)]">
                     <h2 className="text-sm font-bold text-[var(--color-text)] flex items-center gap-1.5">
                       <Award size={16} className="text-[var(--color-point)]" />
                       프롬프트 품질 점수 (Score)
                     </h2>
-                    <div className="flex items-center gap-1 bg-[var(--color-bg-secondary)] text-[var(--color-point)] font-bold px-2 py-0.5 rounded text-xs">
+                    <div className="flex items-center gap-1 bg-[var(--color-bg-secondary)] text-[var(--color-point)] border border-[var(--color-border)] font-bold px-2 py-0.5 rounded text-xs">
                       <span>{promptScore.total}점</span>
                     </div>
                   </div>
 
-                  {/* Circular visual score representation */}
                   <div className="flex items-center justify-center py-2">
-                    <div className="relative flex items-center justify-center w-24 h-24 rounded-full border-4 border-[var(--color-border)]">
-                      <div className="absolute inset-0 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin-slow"></div>
+                    <div className="relative flex items-center justify-center w-24 h-24 rounded-full border-4 border-indigo-150">
+                      <div className="absolute inset-0 rounded-full border-4 border-[var(--color-point)] border-t-transparent animate-spin-slow"></div>
                       <span className="text-2xl font-black text-[var(--color-text)] tracking-tight">{promptScore.total}</span>
                     </div>
                   </div>
 
-                  {/* Score details grid breakdown */}
-                  <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600">
+                  <div className="grid grid-cols-2 gap-2 text-[10px] text-[var(--color-sub)]">
                     <div className="flex justify-between p-1 border-b border-slate-50">
                       <span>장르 명확성:</span>
                       <span className="font-bold text-[var(--color-text)]">{promptScore.genre}/10</span>
@@ -1209,11 +1325,10 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Strengths & Improvements */}
-                  <div className="flex flex-col gap-2.5 pt-2 border-t border-[var(--color-border)]/70">
+                  <div className="flex flex-col gap-2.5 pt-2 border-t border-[var(--color-border)]">
                     <div>
-                      <span className="text-[10px] font-bold text-emerald-500 block mb-0.5">✓ 프롬프트 강점</span>
-                      <ul className="list-disc list-inside text-xs text-slate-600 flex flex-col gap-0.5">
+                      <span className="text-xs font-bold text-emerald-500 block mb-0.5">✓ 프롬프트 강점</span>
+                      <ul className="list-disc list-inside text-xs text-[var(--color-sub)] flex flex-col gap-0.5">
                         {promptScore.strengths.map((str, i) => (
                           <li key={i}>{str}</li>
                         ))}
@@ -1221,8 +1336,8 @@ export default function Home() {
                     </div>
 
                     <div>
-                      <span className="text-[10px] font-bold text-amber-500 block mb-0.5">✓ 개선할 포인트</span>
-                      <ul className="list-disc list-inside text-xs text-slate-600 flex flex-col gap-0.5">
+                      <span className="text-xs font-bold text-amber-500 block mb-0.5">✓ 개선할 포인트</span>
+                      <ul className="list-disc list-inside text-xs text-[var(--color-sub)] flex flex-col gap-0.5">
                         {promptScore.improvements.map((imp, i) => (
                           <li key={i}>{imp}</li>
                         ))}
@@ -1232,7 +1347,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Similar ideas prompts list */}
               {similarPrompts.length > 0 && (
                 <div className="glass-panel p-5 flex flex-col gap-2">
                   <span className="text-xs font-bold text-[var(--color-text)]">이런 아이디어는 어떠세요? (유사 상황 추천)</span>
@@ -1243,7 +1357,7 @@ export default function Home() {
                         onClick={() => {
                           setIdeaInput(sim);
                         }}
-                        className="w-full text-left p-2 bg-[var(--color-bg-secondary)] hover:bg-slate-100 border border-[var(--color-border)] rounded text-xs text-slate-600 transition-colors font-medium truncate"
+                        className="w-full text-left p-2 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-secondary)]/80 border border-[var(--color-border)] rounded text-xs text-[var(--color-sub)] transition-colors font-medium truncate cursor-pointer"
                       >
                         {sim}
                       </button>
@@ -1260,7 +1374,7 @@ export default function Home() {
         {/* ========================================================================= */}
         {activeTab === "doctor" && (
           <div className="max-w-3xl mx-auto glass-panel p-6 md:p-8 flex flex-col gap-6">
-            <div className="flex flex-col gap-1.5 border-b border-[var(--color-border)]/70 pb-3">
+            <div className="flex flex-col gap-1.5 border-b border-[var(--color-border)] pb-3">
               <h2 className="text-base font-bold text-[var(--color-text)] flex items-center gap-1.5">
                 <Activity size={18} className="text-[var(--color-point)]" />
                 Prompt Doctor (프롬프트 종합 진단)
@@ -1271,7 +1385,7 @@ export default function Home() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-[var(--color-text)]">기존 음악 프롬프트 입력</label>
+              <label className="text-xs font-bold text-slate-700">기존 음악 프롬프트 입력</label>
               <textarea
                 value={doctorRawPrompt}
                 onChange={(e) => setDoctorRawPrompt(e.target.value)}
@@ -1283,7 +1397,7 @@ export default function Home() {
             <button
               onClick={handleDoctorSubmit}
               disabled={doctorLoading || !doctorRawPrompt.trim()}
-              className="w-full py-3 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-xl font-bold text-xs shadow-md shadow-[var(--color-shadow)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+              className="w-full py-3 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-xl font-bold text-xs shadow-md shadow-[var(--color-shadow)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 cursor-pointer"
             >
               {doctorLoading ? (
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
@@ -1297,18 +1411,17 @@ export default function Home() {
 
             {/* Doctor analysis report results */}
             {(doctorCritique || doctorImproved) && (
-              <div className="flex flex-col gap-4 pt-4 border-t border-[var(--color-border)]/70">
+              <div className="flex flex-col gap-4 pt-4 border-t border-[var(--color-border)]">
                 <div className="p-4 bg-amber-50/50 border border-amber-200/80 rounded-lg flex flex-col gap-2.5">
                   <h3 className="text-xs font-bold text-amber-700 flex items-center gap-1.5">
                     <Info size={14} />
                     진단 및 분석 리포트
                   </h3>
-                  <p className="text-xs text-[var(--color-text)] leading-normal">{doctorCritique}</p>
+                  <p className="text-sm text-[var(--color-text)] leading-relaxed">{doctorCritique}</p>
 
-                  {/* Missing elements tags */}
                   {doctorMissing.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-1">
-                      <span className="text-[10px] font-bold text-[var(--color-sub)]/70 self-center">누락된 리리아 규칙:</span>
+                      <span className="text-xs font-bold text-[var(--color-sub)]/70 self-center">누락된 리리아 규칙:</span>
                       {doctorMissing.map((m, idx) => (
                         <span key={idx} className="text-[10px] px-2 py-0.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-md font-semibold">
                           ✗ {m}
@@ -1323,7 +1436,7 @@ export default function Home() {
                     <h3 className="text-xs font-bold text-[var(--color-text)]">치료 및 개선된 최종 프롬프트 (Improved Prompt)</h3>
                     <button
                       onClick={() => copyToClipboard(doctorImproved, setDoctorCopied)}
-                      className="p-1 rounded hover:bg-slate-100 text-[var(--color-sub)] hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-[10px] font-semibold"
+                      className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-[10px] font-semibold cursor-pointer"
                     >
                       {doctorCopied ? (
                         <>
@@ -1352,7 +1465,7 @@ export default function Home() {
         {/* ========================================================================= */}
         {activeTab === "converter" && (
           <div className="max-w-3xl mx-auto glass-panel p-6 md:p-8 flex flex-col gap-6">
-            <div className="flex flex-col gap-1.5 border-b border-[var(--color-border)]/70 pb-3">
+            <div className="flex flex-col gap-1.5 border-b border-[var(--color-border)] pb-3">
               <h2 className="text-base font-bold text-[var(--color-text)] flex items-center gap-1.5">
                 <Music size={18} className="text-[var(--color-point)]" />
                 Style Converter (유명 아티스트 느낌 변환기)
@@ -1363,7 +1476,7 @@ export default function Home() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-[var(--color-text)]">원하는 아티스트 또는 곡 스타일 입력</label>
+              <label className="text-xs font-bold text-slate-700">원하는 아티스트 또는 곡 스타일 입력</label>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -1375,7 +1488,7 @@ export default function Home() {
                 <button
                   onClick={handleConverterSubmit}
                   disabled={converterLoading || !converterKeyword.trim()}
-                  className="px-6 py-2.5 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-lg font-bold text-xs shadow-md shadow-[var(--color-shadow)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                  className="px-6 py-2.5 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-lg font-bold text-xs shadow-md shadow-[var(--color-shadow)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   {converterLoading ? (
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
@@ -1391,20 +1504,20 @@ export default function Home() {
 
             {/* Conversion Result output */}
             {converterResult && (
-              <div className="flex flex-col gap-5 pt-4 border-t border-[var(--color-border)]/70">
+              <div className="flex flex-col gap-5 pt-4 border-t border-[var(--color-border)]">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-[var(--color-bg-secondary)]/30 border border-[var(--color-border)] rounded-lg flex flex-col gap-2">
-                    <span className="text-[10px] font-bold text-[var(--color-point)]">장르 치환 (Genre)</span>
+                  <div className="p-4 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg flex flex-col gap-2">
+                    <span className="text-xs font-bold text-[var(--color-point)]">장르 치환 (Genre)</span>
                     <span className="text-xs font-bold text-[var(--color-text)] leading-normal">{converterResult.genre}</span>
                   </div>
 
-                  <div className="p-4 bg-[var(--color-bg-secondary)]/30 border border-[var(--color-border)] rounded-lg flex flex-col gap-2">
-                    <span className="text-[10px] font-bold text-[var(--color-point)]">보컬 매핑 (Vocal)</span>
+                  <div className="p-4 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg flex flex-col gap-2">
+                    <span className="text-xs font-bold text-[var(--color-point)]">보컬 매핑 (Vocal)</span>
                     <span className="text-xs font-bold text-[var(--color-text)] leading-normal">{converterResult.vocal}</span>
                   </div>
 
-                  <div className="p-4 bg-[var(--color-bg-secondary)]/30 border border-[var(--color-border)] rounded-lg flex flex-col gap-2">
-                    <span className="text-[10px] font-bold text-[var(--color-point)]">핵심 시그니처 사운드 (Signature Sound)</span>
+                  <div className="p-4 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg flex flex-col gap-2">
+                    <span className="text-xs font-bold text-[var(--color-point)]">핵심 시그니처 사운드 (Signature Sound)</span>
                     <div className="flex flex-wrap gap-1.5 mt-0.5">
                       {converterResult.instruments.map((inst, idx) => (
                         <span key={idx} className="text-[10px] px-2 py-0.5 bg-white border border-[var(--color-border)] text-[var(--color-point)] rounded font-semibold">
@@ -1414,22 +1527,21 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="p-4 bg-[var(--color-bg-secondary)]/30 border border-[var(--color-border)] rounded-lg flex flex-col gap-2">
-                    <span className="text-[10px] font-bold text-[var(--color-point)]">감성 및 속도감 (Vibe & Tempo)</span>
+                  <div className="p-4 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg flex flex-col gap-2">
+                    <span className="text-xs font-bold text-[var(--color-point)]">감성 및 속도감 (Vibe & Tempo)</span>
                     <span className="text-xs font-bold text-[var(--color-text)] leading-normal">
                       {converterResult.vibe} ({converterResult.tempoFeel})
                     </span>
                   </div>
                 </div>
 
-                {/* Final Converter Prompt Output */}
                 {converterPrompt && (
                   <div className="flex flex-col gap-2 pt-2">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold text-[var(--color-text)]">조립 완료된 구글 Lyria 음악 프롬프트</h3>
                       <button
                         onClick={() => copyToClipboard(converterPrompt, setConverterCopied)}
-                        className="p-1 rounded hover:bg-slate-100 text-[var(--color-sub)] hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-[10px] font-semibold"
+                        className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-[var(--color-point)] transition-colors flex items-center gap-1 text-[10px] font-semibold cursor-pointer"
                       >
                         {converterCopied ? (
                           <>
@@ -1455,22 +1567,407 @@ export default function Home() {
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 4: HISTORY & ARCHIVE */}
+        {/* TAB 4: PLAYLIST GENERATOR */}
+        {/* ========================================================================= */}
+        {activeTab === "playlist" && (
+          <div className="max-w-4xl mx-auto flex flex-col gap-6">
+            {/* Box 1: Configuration Form */}
+            <div className="glass-panel p-6 md:p-8 flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5 border-b border-[var(--color-border)] pb-3">
+                <h2 className="text-base font-bold text-[var(--color-text)] flex items-center gap-1.5">
+                  <ListMusic size={18} className="text-[var(--color-point)]" />
+                  Playlist Generator (10곡 음악&비주얼 일괄 설계기)
+                </h2>
+                <p className="text-sm text-[var(--color-sub)]">
+                  플레이리스트의 대주제를 입력하고 흐름을 선택하세요. AI가 10곡의 Lyria 음악 프롬프트와 Imagen 2 이미지 프롬프트, Veo 3 비디오 루프 프롬프트, 그리고 3개 국어(한/영/일) 자막 세트를 흐름 전략서와 함께 패키지로 자동 빌드합니다.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-2 flex flex-col gap-1">
+                  <label className="text-xs font-bold text-slate-700">플레이리스트 대주제 / 서사 컨셉</label>
+                  <input
+                    type="text"
+                    value={playlistConcept}
+                    onChange={(e) => setPlaylistConcept(e.target.value)}
+                    placeholder="예: 비 내리는 가을 밤 도쿄 재즈 카페에서 홀로 상상에 잠길 때 듣는 따뜻하고 서글픈 무드"
+                    className="p-2.5 text-xs bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg focus-ring"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-slate-700">곡의 배치 흐름 전략 (Flow Options)</label>
+                  <select
+                    value={playlistFlow}
+                    onChange={(e) => setPlaylistFlow(e.target.value)}
+                    className="p-2.5 text-xs bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg focus-ring cursor-pointer"
+                  >
+                    <option value="Consistent Calm">일관된 평온함과 잔잔한 아늑함 (Consistent Calm)</option>
+                    <option value="Gradual Build-up">초반 차분함에서 후반 점진적 빌드업 (Gradual Build-up)</option>
+                    <option value="Emotional Rollercoaster">감정 기복이 확실한 드라마틱 무드 (Emotional Rollercoaster)</option>
+                    <option value="Morning Energy Boost">아침의 활기를 깨우는 리듬 상승 (Morning Energy Boost)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                onClick={handleGeneratePlaylist}
+                disabled={playlistLoading || !playlistConcept.trim()}
+                className="w-full py-3.5 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-xl font-bold text-xs shadow-md shadow-[var(--color-shadow)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {playlistLoading ? (
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    <span>AI 음악 프로듀서가 10곡의 오디오/비주얼 및 다국어 자막을 융합 설계하고 있습니다... (약 15초 소요)</span>
+                  </div>
+                ) : (
+                  <>
+                    <Sparkles size={14} />
+                    10곡 플레이리스트 일괄 설계 시작
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Box 2: Playlist Results View */}
+            {playlistResult && (
+              <div className="flex flex-col gap-6">
+                {/* Flow Strategy Card */}
+                <div className="glass-panel p-6 border-[var(--color-border)] bg-[var(--color-card)] flex flex-col gap-3">
+                  <span className="text-xs font-bold text-[var(--color-point)] bg-[var(--color-bg-secondary)] px-2 py-0.5 rounded w-fit border border-[var(--color-border)]/50">
+                    🎼 플레이리스트 대전략 (Flow Strategy)
+                  </span>
+                  <h3 className="text-lg font-bold text-[var(--color-text)]">
+                    {playlistResult.playlistTitle}
+                  </h3>
+                  <div className="text-sm text-[var(--color-text)] leading-relaxed border-t border-[var(--color-border)]/50 pt-3 flex flex-col gap-2">
+                    <p className="font-semibold text-[var(--color-point)]">기획 콘셉트:</p>
+                    <p className="text-[var(--color-sub)] bg-[var(--color-bg-secondary)]/30 p-2.5 rounded border border-[var(--color-border)]/30">{playlistResult.overallConcept}</p>
+                    <p className="font-semibold text-[var(--color-point)] mt-2">흐름 배치 전략 및 수록 근거:</p>
+                    <p className="text-[var(--color-sub)] whitespace-pre-wrap">{playlistResult.flowStrategy}</p>
+                  </div>
+
+                  <div className="flex gap-2 justify-end mt-2 pt-2 border-t border-[var(--color-border)]/35">
+                    <button
+                      onClick={exportPlaylistJson}
+                      className="px-4 py-2 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-secondary)]/80 text-[var(--color-point)] border border-[var(--color-border)] rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Download size={13} />
+                      JSON 내보내기
+                    </button>
+                    <button
+                      onClick={exportPlaylistMarkdown}
+                      className="px-4 py-2 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <FileText size={13} />
+                      Markdown 다운로드 (사용설명서 포함)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tracks list (Accordion style) */}
+                <div className="flex flex-col gap-4">
+                  <h3 className="text-sm font-bold text-[var(--color-text)] flex items-center gap-1.5">
+                    <ListMusic size={16} className="text-[var(--color-point)]" />
+                    플레이리스트 수록곡 상세 편집 및 부분 갱신 ({playlistResult.tracks.length} Tracks)
+                  </h3>
+
+                  {playlistResult.tracks.map((track, index) => {
+                    const isExpanded = expandedTrack === index;
+                    const isLoadingTrack = trackLoadingStates[track.trackNumber] || false;
+                    return (
+                      <div
+                        key={track.trackNumber}
+                        className={`glass-panel border transition-all duration-300 ${
+                          isExpanded ? "border-[var(--color-point)] shadow-md shadow-[var(--color-shadow)]" : "border-[var(--color-border)]/60"
+                        }`}
+                      >
+                        {/* Track Accordion Header */}
+                        <div
+                          onClick={() => setExpandedTrack(isExpanded ? null : index)}
+                          className="p-4 flex items-center justify-between cursor-pointer hover:bg-[var(--color-bg-secondary)]/30 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="w-7 h-7 rounded-full bg-[var(--color-point)] text-white text-xs font-black flex items-center justify-center">
+                              {track.trackNumber}
+                            </span>
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold text-[var(--color-text)]">
+                                {track.title}
+                              </span>
+                              <span className="text-xs text-[var(--color-sub)]/70 font-medium max-w-[400px] md:max-w-[600px] truncate">
+                                {track.description}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-[var(--color-point)]">
+                            {isExpanded ? "접기 ▲" : "펼치기 & 상세 편집 ▼"}
+                          </span>
+                        </div>
+
+                        {/* Track Accordion Expanded Body */}
+                        {isExpanded && (
+                          <div className="p-5 border-t border-[var(--color-border)] bg-[var(--color-card)] flex flex-col gap-5">
+                            {/* Title & Description Fields (Editable in state) */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[11px] font-bold text-[var(--color-point)]">곡 영문 제목 (Title)</label>
+                                <input
+                                  type="text"
+                                  value={track.title}
+                                  onChange={(e) => {
+                                    const updatedTracks = [...playlistResult.tracks];
+                                    updatedTracks[index].title = e.target.value;
+                                    setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                  }}
+                                  className="p-2 text-xs bg-white border border-[var(--color-border)] rounded focus-ring font-semibold"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[11px] font-bold text-[var(--color-point)]">곡 한글 설명 (Description)</label>
+                                <input
+                                  type="text"
+                                  value={track.description}
+                                  onChange={(e) => {
+                                    const updatedTracks = [...playlistResult.tracks];
+                                    updatedTracks[index].description = e.target.value;
+                                    setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                  }}
+                                  className="p-2 text-xs bg-white border border-[var(--color-border)] rounded focus-ring"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Dual column: prompts vs captions */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                              {/* Prompts column */}
+                              <div className="flex flex-col gap-3">
+                                <span className="text-xs font-bold text-[var(--color-text)] border-b border-[var(--color-border)]/50 pb-1">
+                                  🎬 AI 생성 프롬프트 명세
+                                </span>
+
+                                {/* Lyria Prompt */}
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[10px] font-bold text-[var(--color-sub)]/80 flex items-center justify-between">
+                                    <span>Google Lyria 음악 생성 프롬프트</span>
+                                    <button
+                                      onClick={() => copyToClipboard(track.musicPrompt, setCopied)}
+                                      className="text-[9px] text-[var(--color-point)] hover:underline cursor-pointer"
+                                    >
+                                      복사
+                                    </button>
+                                  </label>
+                                  <textarea
+                                    value={track.musicPrompt}
+                                    onChange={(e) => {
+                                      const updatedTracks = [...playlistResult.tracks];
+                                      updatedTracks[index].musicPrompt = e.target.value;
+                                      setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                    }}
+                                    className="p-2 text-xs bg-[var(--color-bg-secondary)]/50 border border-[var(--color-border)] rounded focus-ring h-20 font-mono resize-none leading-relaxed"
+                                  />
+                                </div>
+
+                                {/* Imagen 2 Prompt */}
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[10px] font-bold text-[var(--color-sub)]/80 flex items-center justify-between">
+                                    <span>Google Imagen 2 이미지/썸네일 프롬프트</span>
+                                    <button
+                                      onClick={() => copyToClipboard(track.imagePrompt, setCopied)}
+                                      className="text-[9px] text-[var(--color-point)] hover:underline cursor-pointer"
+                                    >
+                                      복사
+                                    </button>
+                                  </label>
+                                  <textarea
+                                    value={track.imagePrompt}
+                                    onChange={(e) => {
+                                      const updatedTracks = [...playlistResult.tracks];
+                                      updatedTracks[index].imagePrompt = e.target.value;
+                                      setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                    }}
+                                    className="p-2 text-xs bg-[var(--color-bg-secondary)]/50 border border-[var(--color-border)] rounded focus-ring h-16 font-mono resize-none leading-relaxed"
+                                  />
+                                </div>
+
+                                {/* Veo 3 Prompt */}
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[10px] font-bold text-[var(--color-sub)]/80 flex items-center justify-between">
+                                    <span>Google Veo 3 루프 동영상 프롬프트</span>
+                                    <button
+                                      onClick={() => copyToClipboard(track.videoPrompt, setCopied)}
+                                      className="text-[9px] text-[var(--color-point)] hover:underline cursor-pointer"
+                                    >
+                                      복사
+                                    </button>
+                                  </label>
+                                  <textarea
+                                    value={track.videoPrompt}
+                                    onChange={(e) => {
+                                      const updatedTracks = [...playlistResult.tracks];
+                                      updatedTracks[index].videoPrompt = e.target.value;
+                                      setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                    }}
+                                    className="p-2 text-xs bg-[var(--color-bg-secondary)]/50 border border-[var(--color-border)] rounded focus-ring h-16 font-mono resize-none leading-relaxed"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Captions column */}
+                              <div className="flex flex-col gap-3">
+                                <span className="text-xs font-bold text-[var(--color-text)] border-b border-[var(--color-border)]/50 pb-1">
+                                  📝 다국어 자막 패키지 (한/영/일)
+                                </span>
+
+                                {/* Thumbnail Caption */}
+                                <div className="flex flex-col gap-1.5 p-2.5 bg-[var(--color-bg-secondary)]/40 rounded border border-[var(--color-border)]/40">
+                                  <label className="text-[10px] font-bold text-[var(--color-point)]">썸네일 자막 (Thumbnail Caption)</label>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <input
+                                      type="text"
+                                      value={track.thumbnailCaption.ko}
+                                      onChange={(e) => {
+                                        const updatedTracks = [...playlistResult.tracks];
+                                        updatedTracks[index].thumbnailCaption.ko = e.target.value;
+                                        setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                      }}
+                                      placeholder="한국어"
+                                      className="p-1.5 bg-white text-xs border border-[var(--color-border)] rounded focus-ring"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={track.thumbnailCaption.en}
+                                      onChange={(e) => {
+                                        const updatedTracks = [...playlistResult.tracks];
+                                        updatedTracks[index].thumbnailCaption.en = e.target.value;
+                                        setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                      }}
+                                      placeholder="영어"
+                                      className="p-1.5 bg-white text-xs border border-[var(--color-border)] rounded focus-ring"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={track.thumbnailCaption.ja}
+                                      onChange={(e) => {
+                                        const updatedTracks = [...playlistResult.tracks];
+                                        updatedTracks[index].thumbnailCaption.ja = e.target.value;
+                                        setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                      }}
+                                      placeholder="일본어"
+                                      className="p-1.5 bg-white text-xs border border-[var(--color-border)] rounded focus-ring"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Scene captions */}
+                                <div className="flex flex-col gap-2.5">
+                                  {track.scenes.map((scene, sceneIdx) => (
+                                    <div key={scene.sceneNumber} className="flex flex-col gap-1 p-2 bg-slate-50 border border-slate-100 rounded">
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-[10px] font-bold text-[var(--color-text)]">
+                                          Scene {scene.sceneNumber}: {scene.description}
+                                        </span>
+                                      </div>
+                                      <div className="grid grid-cols-3 gap-2 mt-1">
+                                        <input
+                                          type="text"
+                                          value={scene.captions.ko}
+                                          onChange={(e) => {
+                                            const updatedTracks = [...playlistResult.tracks];
+                                            updatedTracks[index].scenes[sceneIdx].captions.ko = e.target.value;
+                                            setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                          }}
+                                          placeholder="KO"
+                                          className="p-1 bg-white text-[10px] border border-[var(--color-border)] rounded focus-ring"
+                                        />
+                                        <input
+                                          type="text"
+                                          value={scene.captions.en}
+                                          onChange={(e) => {
+                                            const updatedTracks = [...playlistResult.tracks];
+                                            updatedTracks[index].scenes[sceneIdx].captions.en = e.target.value;
+                                            setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                          }}
+                                          placeholder="EN"
+                                          className="p-1 bg-white text-[10px] border border-[var(--color-border)] rounded focus-ring"
+                                        />
+                                        <input
+                                          type="text"
+                                          value={scene.captions.ja}
+                                          onChange={(e) => {
+                                            const updatedTracks = [...playlistResult.tracks];
+                                            updatedTracks[index].scenes[sceneIdx].captions.ja = e.target.value;
+                                            setPlaylistResult({ ...playlistResult, tracks: updatedTracks });
+                                          }}
+                                          placeholder="JA"
+                                          className="p-1 bg-white text-[10px] border border-[var(--color-border)] rounded focus-ring"
+                                        />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* INDIVIDUAL TRACK REGENERATION SECTION */}
+                            <div className="mt-2 pt-4 border-t border-[var(--color-border)]/50 flex flex-col gap-2.5 bg-[var(--color-bg-secondary)]/35 p-3 rounded-lg border border-[var(--color-border)]/30">
+                              <span className="text-xs font-bold text-[var(--color-point)] flex items-center gap-1">
+                                <RotateCcw size={13} />
+                                {track.trackNumber}번 곡 단독 재생성 조정 피드백
+                              </span>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={trackFeedbacks[track.trackNumber] || ""}
+                                  onChange={(e) =>
+                                    setTrackFeedbacks({ ...trackFeedbacks, [track.trackNumber]: e.target.value })
+                                  }
+                                  placeholder="예: 템포를 조금 더 신나게 120 BPM으로 올리고, 썸네일 이미지는 은은한 파스텔톤 일러스트로 바꿔줘"
+                                  className="flex-1 p-2 text-xs bg-white border border-[var(--color-border)] rounded focus-ring"
+                                />
+                                <button
+                                  onClick={() => handleRegenerateTrack(track.trackNumber)}
+                                  disabled={isLoadingTrack}
+                                  className="px-4 py-2 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded text-xs font-bold shadow transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 shrink-0 cursor-pointer"
+                                >
+                                  {isLoadingTrack ? (
+                                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                  ) : (
+                                    <>
+                                      <RotateCcw size={12} />
+                                      이 곡만 새로 작성
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 5: HISTORY & ARCHIVE */}
         {/* ========================================================================= */}
         {activeTab === "history" && (
           <div className="max-w-4xl mx-auto glass-panel p-6 md:p-8 flex flex-col gap-6">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-[var(--color-border)]/70 pb-4">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-[var(--color-border)] pb-4">
               <div className="flex flex-col gap-1">
                 <h2 className="text-base font-bold text-[var(--color-text)] flex items-center gap-1.5">
                   <Search size={18} className="text-[var(--color-point)]" />
                   프롬프트 보관소 (History)
                 </h2>
-                <p className="text-sm text-[var(--color-sub)]">
+                <p className="text-xs text-[var(--color-sub)]">
                   최근 생성되거나 조정된 프롬프트 히스토리를 최대 20개까지 관리하고,<br />원클릭으로 다시 편집할 수 있습니다.
                 </p>
               </div>
 
-              {/* Search bar inside history */}
               <div className="relative w-full md:w-64">
                 <input
                   type="text"
@@ -1479,15 +1976,14 @@ export default function Home() {
                   placeholder="아이디어 또는 키워드 검색..."
                   className="w-full pl-8 pr-3 py-1.5 text-xs bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg focus-ring"
                 />
-                <Search size={12} className="absolute left-2.5 top-2.5 text-[var(--color-sub)]/70" />
+                <Search size={12} className="absolute left-2.5 top-2.5 text-slate-400" />
               </div>
             </div>
 
-            {/* History List */}
             {history.length === 0 ? (
               <div className="text-center py-16 flex flex-col items-center gap-3">
                 <Music size={32} className="text-slate-300" />
-                <p className="text-xs text-[var(--color-sub)]/70">보관된 프롬프트 히스토리가 없습니다. 빌더 탭에서 프롬프트를 먼저 생성해보세요.</p>
+                <p className="text-xs text-slate-400">보관된 프롬프트 히스토리가 없습니다. 빌더 탭에서 프롬프트를 먼저 생성해보세요.</p>
               </div>
             ) : (
               <div className="flex flex-col gap-3.5">
@@ -1501,37 +1997,33 @@ export default function Home() {
                     <div
                       key={item.id}
                       onClick={() => loadHistoryItem(item)}
-                      className="p-4 bg-[var(--color-card)] border border-[var(--color-border)]/50 hover:border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)]/10 rounded-xl transition-all cursor-pointer flex flex-col md:flex-row items-start justify-between gap-4 group"
+                      className="p-4 bg-[var(--color-card)] border border-[var(--color-border)]/50 hover:border-[var(--color-point)] hover:bg-[var(--color-bg-secondary)]/50 rounded-xl transition-all cursor-pointer flex flex-col md:flex-row items-start justify-between gap-4 group"
                     >
                       <div className="flex-1 flex flex-col gap-2">
-                        {/* Upper info row */}
                         <div className="flex flex-wrap items-center gap-2 text-[10px]">
-                          <span className="font-semibold text-[var(--color-sub)]/70">{item.timestamp}</span>
-                          <span className="bg-slate-100 text-[var(--color-sub)] font-semibold px-2 py-0.2 rounded-md">
+                          <span className="font-semibold text-slate-400">{item.timestamp}</span>
+                          <span className="bg-slate-100 text-slate-500 font-semibold px-2 py-0.2 rounded-md">
                             {item.params.genre || "사용자 맞춤"}
                           </span>
-                          <span className="bg-[var(--color-bg-secondary)] text-[var(--color-point)] font-bold px-1.5 py-0.2 rounded">
+                          <span className="bg-[var(--color-bg-secondary)] text-[var(--color-point)] border border-[var(--color-border)] font-bold px-1.5 py-0.2 rounded">
                             {item.score}점
                           </span>
                         </div>
 
-                        {/* User idea text */}
                         <div className="text-xs font-bold text-[var(--color-text)]">
                           <span className="text-indigo-400 font-extrabold mr-1">Idea:</span>
                           {item.idea}
                         </div>
 
-                        {/* Final prompt preview */}
-                        <p className="text-[11px] font-mono text-[var(--color-sub)] leading-normal line-clamp-2 bg-[var(--color-bg-secondary)] p-2 rounded border border-[var(--color-border)]/70/50">
+                        <p className="text-[11px] font-mono text-[var(--color-sub)] leading-normal line-clamp-2 bg-[var(--color-bg-secondary)] p-2 rounded border border-[var(--color-border)]/50">
                           {item.prompt}
                         </p>
                       </div>
 
-                      {/* Control buttons */}
                       <div className="flex items-center gap-2 self-end md:self-center">
                         <button
                           onClick={(e) => toggleFavoriteItem(item.id, e)}
-                          className={`p-1.5 rounded hover:bg-slate-100 transition-colors ${
+                          className={`p-1.5 rounded hover:bg-slate-100 transition-colors cursor-pointer ${
                             item.favorite ? "text-amber-500" : "text-[var(--color-sub)]/70 hover:text-slate-600"
                           }`}
                           title={item.favorite ? "즐겨찾기 해제" : "즐겨찾기 등록"}
@@ -1540,7 +2032,7 @@ export default function Home() {
                         </button>
                         <button
                           onClick={(e) => deleteHistoryItem(item.id, e)}
-                          className="p-1.5 rounded hover:bg-rose-50 text-[var(--color-sub)]/70 hover:text-rose-600 transition-colors"
+                          className="p-1.5 rounded hover:bg-rose-50 text-[var(--color-sub)]/70 hover:text-rose-600 transition-colors cursor-pointer"
                           title="삭제"
                         >
                           <Trash2 size={14} />
@@ -1604,13 +2096,32 @@ export default function Home() {
                   <strong className="text-[var(--color-text)]">3단계 초보자 가이드:</strong> 각 파라미터(장르, 무드, BPM 등) 우측의 물음표(<code className="text-[var(--color-point)] font-bold font-mono">?</code>) 버튼을 클릭하여 이론적 설명부터 비유, 실제 소리 느낌까지 즉시 확인하세요.
                 </li>
               </ul>
+
+              <h3 className="text-sm font-bold text-[var(--color-point)] border-b border-[var(--color-border)]/50 pb-1 mt-2 flex items-center gap-1.5">
+                <ListMusic size={15} />
+                3. PLAYLIST 일괄 설계기 활용법
+              </h3>
+              <ul className="list-disc list-inside flex flex-col gap-2.5 text-xs text-[var(--color-sub)]">
+                <li>
+                  <strong className="text-[var(--color-text)]">대주제 및 배치 흐름 입력:</strong> 전체 플레이리스트 콘셉트와 곡 배치 성격(빌드업, 일관 차분 등)을 선택한 뒤 생성하면 **10곡 수록곡 명세**와 **흐름 전략 기획안**이 일괄 설계됩니다.
+                </li>
+                <li>
+                  <strong className="text-[var(--color-text)]">멀티미디어 프롬프트 자동화:</strong> Google Lyria(음악) 외에 곡당 **Google Imagen 2(썸네일 이미지)** 및 **Google Veo 3(배경 동영상 루프)** 생성용 영어 프롬프트가 함께 정밀 작성됩니다.
+                </li>
+                <li>
+                  <strong className="text-[var(--color-text)]">다국어 자막 패키지:</strong> 각 트랙별 썸네일 자막 및 씬별 자막이 3개 국어(한국어, 영어, 일본어)로 실시간 대응 작성됩니다.
+                </li>
+                <li>
+                  <strong className="text-[var(--color-text)]">개별 곡 세부 편집 및 재생성:</strong> 리스트에서 개별 트랙 카드를 열어 프롬프트나 자막 텍스트를 즉석 수정할 수 있고, 카드 하단 피드백 입력창을 이용해 전체 일관성을 유지하며 **해당 곡만 독립 재생성**할 수 있습니다.
+                </li>
+              </ul>
             </div>
 
             {/* Right Box: Prompt Doctor, Style, and Tips */}
             <div className="flex flex-col gap-4">
               <h3 className="text-sm font-bold text-[var(--color-point)] border-b border-[var(--color-border)]/50 pb-1 flex items-center gap-1.5">
                 <Activity size={15} />
-                3. PROMPT DOCTOR & STYLE CONVERTER
+                4. PROMPT DOCTOR & STYLE CONVERTER
               </h3>
               <ul className="list-disc list-inside flex flex-col gap-2.5 text-xs text-[var(--color-sub)]">
                 <li>
@@ -1626,7 +2137,7 @@ export default function Home() {
 
               <h3 className="text-sm font-bold text-[var(--color-point)] border-b border-[var(--color-border)]/50 pb-1 mt-2 flex items-center gap-1.5">
                 <Sliders size={15} />
-                4. Google Lyria 공식 프롬프트 팁
+                5. Google Lyria 공식 프롬프트 팁
               </h3>
               <div className="bg-[var(--color-bg-secondary)] p-3 rounded-lg text-xs text-[var(--color-sub)] flex flex-col gap-2 border border-[var(--color-border)]/50">
                 <p>
@@ -1660,7 +2171,6 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Warning info note for client keys */}
             {showApiKeyWarning && (
               <div className="p-3.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-xs leading-normal flex items-start gap-2">
                 <Info size={16} className="text-amber-600 shrink-0 mt-0.5" />
@@ -1673,22 +2183,22 @@ export default function Home() {
 
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-[var(--color-text)]">Gemini API Key</label>
+                <label className="text-xs font-bold text-slate-700">Gemini API Key</label>
                 <input
                   type="password"
                   defaultValue={apiKey}
                   placeholder="AIzaSy..."
                   id="apiKeyInput"
-                  className="w-full p-2.5 text-xs bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg focus-ring font-mono"
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus-ring font-mono"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-[var(--color-text)]">추천 모델 (Model Selection)</label>
+                <label className="text-xs font-bold text-slate-700">추천 모델 (Model Selection)</label>
                 <select
                   id="modelSelect"
                   defaultValue={selectedModel}
-                  className="w-full p-2.5 text-xs bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg focus-ring cursor-pointer"
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus-ring cursor-pointer"
                 >
                   <option value="gemini-2.5-flash">Gemini 2.5 Flash (가장 빠름 - 권장)</option>
                   <option value="gemini-2.5-pro">Gemini 2.5 Pro (더 정밀함)</option>
@@ -1696,13 +2206,13 @@ export default function Home() {
                 </select>
               </div>
 
-              <div className="text-xs text-[var(--color-sub)]">
+              <div className="text-[10px] text-slate-400">
                 🔑 API Key가 없으신가요?{" "}
                 <a
                   href="https://aistudio.google.com/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[var(--color-point)] font-bold hover:underline"
+                  className="text-indigo-500 font-bold hover:underline"
                 >
                   Google AI Studio
                 </a>
@@ -1710,11 +2220,11 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--color-border)]/70">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               {!showApiKeyWarning && (
                 <button
                   onClick={() => setSettingsOpen(false)}
-                  className="px-4 py-2 border border-[var(--color-border)] rounded-lg text-xs font-semibold text-[var(--color-sub)] hover:bg-[var(--color-bg-secondary)] transition-colors"
+                  className="px-4 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   취소
                 </button>
@@ -1725,7 +2235,7 @@ export default function Home() {
                   const model = (document.getElementById("modelSelect") as HTMLSelectElement).value;
                   saveSettings(key, model);
                 }}
-                className="px-5 py-2 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-lg text-xs font-bold shadow-md shadow-[var(--color-shadow)] transition-colors"
+                className="px-5 py-2 bg-[var(--color-point)] hover:bg-[var(--color-sub-point)] text-white rounded-lg text-xs font-bold shadow-md shadow-indigo-100 transition-colors cursor-pointer"
               >
                 설정 저장
               </button>

@@ -246,3 +246,200 @@ export async function convertStyle(apiKey: string, styleKeyword: string, model: 
   const jsonText = await callGemini(apiKey, prompt, model, true);
   return JSON.parse(jsonText.trim()) as StyleConversionResult;
 }
+
+// 6. Playlist Generation Interface & Functions
+export interface PlaylistTrack {
+  trackNumber: number;
+  title: string;
+  description: string;
+  musicPrompt: string;
+  imagePrompt: string;
+  videoPrompt: string;
+  thumbnailCaption: {
+    ko: string;
+    en: string;
+    ja: string;
+  };
+  scenes: {
+    sceneNumber: number;
+    description: string;
+    captions: {
+      ko: string;
+      en: string;
+      ja: string;
+    };
+  }[];
+}
+
+export interface PlaylistResult {
+  playlistTitle: string;
+  overallConcept: string;
+  flowStrategy: string;
+  tracks: PlaylistTrack[];
+}
+
+export async function generatePlaylist(
+  apiKey: string,
+  concept: string,
+  flowOption: string,
+  model: string = "gemini-2.5-flash"
+): Promise<PlaylistResult> {
+  const prompt = `당신은 세계 최고의 음악 감독이자 비주얼 프롬프트 디자이너, 다국어 영상 콘텐츠 프로듀서입니다.
+사용자가 입력한 플레이리스트 대주제와 곡 흐름 전략을 바탕으로 총 10곡으로 구성된 프리미엄 음악 플레이리스트와 각 트랙별 사운드/이미지/동영상 프롬프트 및 다국어 자막을 생성해 주세요.
+
+- 대주제(Concept): "${concept}"
+- 흐름 옵션(Flow Option): "${flowOption}"
+
+[지침]
+1. 장르는 Google Lyria 음악 모델의 강점을 극대화하는 묘사를 포함하여 영문으로 작성해야 합니다.
+2. 각 곡에 앨범 아트용 'Google Imagen 2' 이미지 프롬프트(영문)를 생성하세요. 썸네일 아트에 어울리는 visual art, digital illustration, realistic photography 등의 스타일 묘사를 명시하세요.
+3. 각 곡에 배경 비디오/루프용 'Google Veo 3' 동영상 프롬프트(영문)를 생성하세요. 씬의 부드러운 움직임(cinematic loop video, slow panning, warm light leak)을 묘사하세요.
+4. 각 곡의 썸네일에 들어갈 타이틀 자막(thumbnailCaption) 및 씬(Scene)별 영상 자막(scenes - 총 3개 씬)을 한국어, 영어, 일본어 3개 국어로 생성해 주세요.
+5. 왜 이 10곡을 선택했고 어떻게 유기적으로 감정선/에너지를 이어지게 구성했는지 그 전략적 기획서(flowStrategy)를 상세하게 한국어로 작성해 주세요.
+
+반드시 다음 JSON 스키마 형식으로만 응답해야 합니다. 추가 설명이나 코드 블록 기호 없이 순수 JSON 문자열만 반환하세요:
+{
+  "playlistTitle": "플레이리스트 전체 타이틀 (한글/영문 병기)",
+  "overallConcept": "전체 기획 컨셉 및 무드 설명 (한국어)",
+  "flowStrategy": "플레이리스트 구성 흐름 및 기획 전략 사유 (한국어, 매우 자세하게 작성)",
+  "tracks": [
+    {
+      "trackNumber": 1,
+      "title": "영문 곡 제목 (English Title)",
+      "description": "한글 곡 설명 (Korean Description, 이 곡이 주는 정서와 연출 의도)",
+      "musicPrompt": "구글 Lyria 표준 6단계 프레임워크를 엄격히 준수한 완성형 영문 음악 프롬프트",
+      "imagePrompt": "Google Imagen 2 썸네일 생성용 영문 프롬프트",
+      "videoPrompt": "Google Veo 3 배경 비디오 루프 생성용 영문 프롬프트",
+      "thumbnailCaption": {
+        "ko": "한글 썸네일 자막",
+        "en": "영어 썸네일 자막",
+        "ja": "일본어 썸네일 자막"
+      },
+      "scenes": [
+        {
+          "sceneNumber": 1,
+          "description": "1번 씬 비주얼 묘사 (영어)",
+          "captions": {
+            "ko": "1번 씬 한글 자막",
+            "en": "1번 씬 영어 자막",
+            "ja": "1번 씬 일본어 자막"
+          }
+        },
+        {
+          "sceneNumber": 2,
+          "description": "2번 씬 비주얼 묘사 (영어)",
+          "captions": {
+            "ko": "2번 씬 한글 자막",
+            "en": "2번 씬 영어 자막",
+            "ja": "2번 씬 일본어 자막"
+          }
+        },
+        {
+          "sceneNumber": 3,
+          "description": "3번 씬 비주얼 묘사 (영어)",
+          "captions": {
+            "ko": "3번 씬 한글 자막",
+            "en": "3번 씬 영어 자막",
+            "ja": "3번 씬 일본어 자막"
+          }
+        }
+      ]
+    }
+  ]
+}`;
+
+  const jsonText = await callGemini(apiKey, prompt, model, true);
+  return JSON.parse(jsonText.trim()) as PlaylistResult;
+}
+
+export async function regenerateSingleTrack(
+  apiKey: string,
+  params: {
+    playlistTitle: string;
+    playlistConcept: string;
+    flowStrategy: string;
+    trackNumber: number;
+    userFeedback: string;
+    previousTrack?: { title: string; musicPrompt: string; description: string };
+    nextTrack?: { title: string; musicPrompt: string; description: string };
+  },
+  model: string = "gemini-2.5-flash"
+): Promise<PlaylistTrack> {
+  const prevContext = params.previousTrack
+    ? `- 이전 트랙 (#${params.trackNumber - 1}): 제목: "${params.previousTrack.title}", 음악 프롬프트: "${params.previousTrack.musicPrompt}", 설명: "${params.previousTrack.description}"`
+    : "- 이전 트랙 없음 (플레이리스트 첫 트랙)";
+  const nextContext = params.nextTrack
+    ? `- 다음 트랙 (#${params.trackNumber + 1}): 제목: "${params.nextTrack.title}", 음악 프롬프트: "${params.nextTrack.musicPrompt}", 설명: "${params.nextTrack.description}"`
+    : "- 다음 트랙 없음 (플레이리스트 마지막 트랙)";
+
+  const prompt = `당신은 세계 최고의 음악 감독이자 다국어 비디오 콘텐츠 프로듀서입니다.
+현재 진행 중인 10곡 음악 플레이리스트에서 특정 번호의 트랙 한 곡만 부분 갱신하려 합니다.
+전체 플레이리스트의 기획 전략과 전후 트랙의 감정선 연결을 자연스럽게 유지하면서, 사용자의 세부 조정 피드백을 수용하여 해당 트랙을 새로 작성해 주세요.
+
+플레이리스트 컨텍스트:
+- 플레이리스트 제목: "${params.playlistTitle}"
+- 전체 기획 컨셉: "${params.playlistConcept}"
+- 흐름 배치 전략: "${params.flowStrategy}"
+
+대상 트랙:
+- 갱신할 트랙 번호: #${params.trackNumber}
+- 사용자 조정 피드백: "${params.userFeedback}"
+
+인접 트랙 정보:
+${prevContext}
+${nextContext}
+
+[지침]
+1. 장르는 Google Lyria 음악 모델의 강점을 극대화하는 묘사를 포함하여 영문으로 작성해야 합니다.
+2. Imagen 2 이미지 및 Veo 3 비디오 프롬프트는 썸네일과 유튜브 루프 비디오 제작에 어울리도록 영문으로 작성합니다.
+3. 자막 정보(thumbnailCaption, scenes - 총 3개)는 한국어, 영어, 일본어 3개 국어를 모두 제공해야 합니다.
+4. 이전 트랙과 다음 트랙 사이에서 흐름이 끊기지 않는 자연스러운 교두보 역할을 수행하도록 음악의 속도와 분위기 연결을 고려하세요.
+
+반드시 다음 JSON 스키마 형식으로만 응답해야 합니다. 추가 설명이나 코드 블록 기호 없이 순수 JSON 문자열만 반환하세요:
+{
+  "trackNumber": ${params.trackNumber},
+  "title": "새로 조정된 영문 곡 제목 (English Title)",
+  "description": "새로 조정된 한글 곡 설명 (Korean Description)",
+  "musicPrompt": "구글 Lyria 표준 6단계 프레임워크를 준수한 완성형 영문 음악 프롬프트",
+  "imagePrompt": "Google Imagen 2 썸네일 생성용 영문 프롬프트",
+  "videoPrompt": "Google Veo 3 배경 비디오 루프 생성용 영문 프롬프트",
+  "thumbnailCaption": {
+    "ko": "조정된 한글 썸네일 자막",
+    "en": "조정된 영어 썸네일 자막",
+    "ja": "조정된 일본어 썸네일 자막"
+  },
+  "scenes": [
+    {
+      "sceneNumber": 1,
+      "description": "1번 씬 비주얼 묘사 (영어)",
+      "captions": {
+        "ko": "1번 씬 한글 자막",
+        "en": "1번 씬 영어 자막",
+        "ja": "1번 씬 일본어 자막"
+      }
+    },
+    {
+      "sceneNumber": 2,
+      "description": "2번 씬 비주얼 묘사 (영어)",
+      "captions": {
+        "ko": "2번 씬 한글 자막",
+        "en": "2번 씬 영어 자막",
+        "ja": "2번 씬 일본어 자막"
+      }
+    },
+    {
+      "sceneNumber": 3,
+      "description": "3번 씬 비주얼 묘사 (영어)",
+      "captions": {
+        "ko": "3번 씬 한글 자막",
+        "en": "3번 씬 영어 자막",
+        "ja": "3번 씬 일본어 자막"
+      }
+    }
+  ]
+}`;
+
+  const jsonText = await callGemini(apiKey, prompt, model, true);
+  return JSON.parse(jsonText.trim()) as PlaylistTrack;
+}
+
